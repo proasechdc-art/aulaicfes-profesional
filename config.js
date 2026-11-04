@@ -1,7 +1,7 @@
-// Configuración pública del cliente web AulaICFES.
-// Sustituye estos valores por los del NUEVO proyecto Supabase.
-// La publishable key está diseñada para uso en navegador; nunca pongas aquí una secret/service_role key.
+// Configuración pública del cliente web AulaICFES Profesional.
+// Esta clave es publicable y está protegida por las políticas RLS de Supabase.
+// Nunca agregar aquí una secret key ni una service_role key.
 window.AULAICFES_CONFIG = {
-  SUPABASE_URL: 'https://REEMPLAZAR-con-tu-project-ref.supabase.co',
-  SUPABASE_PUBLISHABLE_KEY: 'REEMPLAZAR-con-tu-publishable-key'
+  SUPABASE_URL: 'https://wbfpxmeajicyjrqkmxvk.supabase.co',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_26LrJQ7KnAr-y_DbuIzoeQ_fhb5ZRaX'
 };
