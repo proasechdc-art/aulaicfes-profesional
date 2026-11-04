@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+*.dump
+*.sql.gz
+.DS_Store
+Thumbs.db
+.vercel
