@@ -142,7 +142,7 @@ function vDocs(){
 }
 function vAulas(){
   const l=S.aulas.map(a=>`<tr class="border-t"><td class="py-1">${E(a.nombre)}</td><td>${E(a.tipo)}</td><td>${btn(`HZUI.delAula('${a.id}')`,'Quitar')}</td></tr>`).join('');
-  return card(`<h3 class="font-semibold mb-2">🚪 Aulas (opcional)</h3><p class="text-xs text-slate-500 mb-2">Si no registras aulas, el horario no controla los salones. Regístralas solo si quieres evitar que dos grupos usen el mismo laboratorio a la vez.</p>
+  return card(`<h3 class="font-semibold mb-2">🚪 Aulas (opcional)</h3><p class="text-xs text-slate-500 mb-2">Si no registras aulas, el horario no controla los salones. Si registras alguna, <b>cada clase necesita un aula</b>: registra un salón por cada grupo, además de los especiales (laboratorio, sistemas…). Si solo quieres cuidar un laboratorio, déjalo para cuando tengas todos los salones.</p>
     ${S.aulas.length?`<table class="w-full text-sm"><tr class="text-left text-slate-500"><th>Aula</th><th>Tipo</th><th></th></tr>${l}</table>`:''}
     <div class="flex flex-wrap gap-2 hz-end hz-mt3"><input id="hz_unom" class="${IN}" placeholder="Nombre (ej. Laboratorio 1)"><input id="hz_utip" class="${IN}" value="general" placeholder="Tipo (general, laboratorio…)">${btn('HZUI.addAula()','Agregar',BTN)}</div>`);
 }
@@ -368,8 +368,7 @@ window.HZUI={
     if(I.selJornada&&o.jornada.length){
       if(o.jornada.length>20)throw new Error('La jornada tiene más de 20 franjas.');
       if(S.franjas.length&&!I.reemplazarJornada)salt.push('La jornada no se cargó porque ya tienes una (marca "reemplazarla" si quieres cambiarla).');
-      else{if(S.franjas.length)ok(await sb.from('hz_franjas').delete().eq('colegio_id',c));
-        ok(await sb.from('hz_franjas').insert(o.jornada.map((j,i)=>({colegio_id:c,orden:i+1,nombre:j.nombre,inicio:j.inicio,fin:j.fin,es_clase:j.es_clase}))));inf.push(o.jornada.length+' franjas de la jornada')}
+      else{ok(await sb.rpc('hz_reemplazar_jornada',{p_colegio:c,p_franjas:o.jornada.map(j=>({nombre:j.nombre,inicio:j.inicio||null,fin:j.fin||null,es_clase:j.es_clase!==false}))}));inf.push(o.jornada.length+' franjas de la jornada')}
     }
     // 2) grupos
     const gs=o.grupos.filter((g,i)=>I.selGrp[i]&&!g.errores.length&&!S.grupos.some(x=>x.grado===g.grado&&x.nombre===g.nombre));

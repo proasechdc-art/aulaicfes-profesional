@@ -58,7 +58,7 @@ button,input,select,textarea{transition:background .18s ease,border-color .18s e
 </head><body>
 <div id="app" class="max-w-6xl mx-auto p-3 sm:p-5"><div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3"><h1 class="text-2xl font-extrabold text-indigo-700 text-center">🎓 AulaICFES</h1><p class="text-center text-sm text-slate-500">Clases virtuales y simulacros Pre-ICFES</p><div class="flex gap-2"><button onclick="setMode('login')" class="flex-1 py-2 rounded-lg text-sm on">Entrar</button><button onclick="setMode('register')" class="flex-1 py-2 rounded-lg text-sm bg-slate-200">Soy estudiante</button><button onclick="setMode('docente')" class="flex-1 py-2 rounded-lg text-sm bg-slate-200">Soy docente</button></div>
   
-  <input id="em" type="email" class="w-full border rounded-lg p-2" placeholder="Correo"><input id="pw" type="password" class="w-full border rounded-lg p-2" placeholder="Contraseña (mín. 6)" onkeydown="if(event.key==='Enter')doAuth()">
+  <input id="em" type="email" class="w-full border rounded-lg p-2" placeholder="Correo"><input id="pw" type="password" class="w-full border rounded-lg p-2" placeholder="Contraseña" onkeydown="if(event.key==='Enter')doAuth()">
   <button onclick="doAuth()" class="w-full py-2 bg-indigo-600 text-white rounded-lg">Entrar</button>
   <button onclick="resend()" class="w-full text-xs text-slate-500 underline">Reenviar correo de confirmación</button></div></div>
 <div id="toast" class="fixed top-4 right-4 z-50 space-y-2"></div>
@@ -70,12 +70,16 @@ const IMG=(AULACFG.SUPABASE_URL||'https://REEMPLAZAR.supabase.co')+'/storage/v1/
 const LOGO=(AULACFG.SUPABASE_URL||'https://REEMPLAZAR.supabase.co')+'/storage/v1/object/public/school-logos/';
 const MEDALS={first:['🥇','Primer Paso','Completar tu primer simulacro'],perfect:['🧠','Mente Brillante','100% de respuestas correctas'],clock:['⏱️','Contra el Reloj','Terminar con más de la mitad del tiempo restante'],streak:['🔥','Constante','Completar 3 simulacros'],high:['⭐','Alto Puntaje','Obtener 80 o más']};
 const isDir=()=>!!M&&(M.role==='rector'||M.role==='coordinador');
-const E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* Celda CSV segura: neutraliza fórmulas (=, +, -, @, tab, CR) que Excel ejecutaría al abrir el archivo. */
+const csvCell=x=>{let t=String(x??'');if(typeof x!=='number'&&/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"'};
+/* Fecha local AAAA-MM-DD (toISOString usa UTC y en Colombia cambia de día a las 7 p. m.). */
+const hoy=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const fmt=s=>String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
 const avg=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):0;
 const v=id=>document.getElementById(id)?.value?.trim()||'';
 const RG0=()=>({nm:'',tel:'',em:'',pw:'',dep:'',mun:'',col:'',otro:false,otroTxt:'',q:'',gs:[],cur:{},area:'',asg:[]});
-let M=null,tab='sim',S=null,RES=null,D={},timer=null,charts=[],chan=null,liveChan=null,authMode='login',QF={g:11,s:'',f:'all',p:0},SF={k:'simulacro',t:'',g:11,s:'',n:10,m:2,a:1,due:'',desc:'',cs:[]},CF={g:6,name:''},RF={c:'',f:'excel',txt:'',rows:[],skip:0,fname:''},RG=RG0(),ED={id:'',nm:'',tel:'',area:'',asg:[],gs:[]},PJ={c:'',t:'',s:'',n:10,v:3,d:'',st:'',ver:'',refs:[]},LT={l1:'',l2:'',l3:'',logo:''};
+let M=null,tab='sim',S=null,RES=null,D={},timer=null,charts=[],chan=null,liveChan=null,authMode='login',RECOVERY=/type=recovery/.test(location.hash),QF={g:11,s:'',f:'all',p:0},SF={k:'simulacro',t:'',g:11,s:'',n:10,m:2,a:1,due:'',desc:'',cs:[]},CF={g:6,name:''},RF={c:'',f:'excel',txt:'',rows:[],skip:0,fname:''},RG=RG0(),ED={id:'',nm:'',tel:'',area:'',asg:[],gs:[]},PJ={c:'',t:'',s:'',n:10,v:3,d:'',st:'',ver:'',refs:[]},LT={l1:'',l2:'',l3:'',logo:''};
 
 function toast(ic,t,d){const e=document.createElement('div');e.className='pop bg-white border-l-4 border-amber-400 shadow-xl rounded-xl p-3 w-72 flex gap-3';e.innerHTML=`<div class="text-3xl">${ic}</div><div><div class="font-bold text-sm">${E(t)}</div><div class="text-xs text-slate-600">${E(d)}</div></div>`;document.getElementById('toast').appendChild(e);setTimeout(()=>e.remove(),6500)}
 const err=(e)=>toast('⚠️','Error',e?.message||String(e));
@@ -90,16 +94,16 @@ async function boot(){
   }
   const{data:{session}}=await sb.auth.getSession();
   if(!session){M=null;return render()}
+  if(RECOVERY){M=null;authMode='recovery';return render()}
   const{data,error}=await sb.from('profiles').select('*').eq('id',session.user.id).single();
-  if(error)return err(error);
+  if(error){document.getElementById('app').innerHTML=authShell(`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><h2 class="font-bold text-lg">No pudimos cargar tu perfil</h2><p class="text-sm text-slate-600">${E(error.message||'')}</p><button onclick="boot()" class="w-full py-2 bg-indigo-600 text-white rounded-lg">Reintentar</button><button onclick="logout()" class="w-full py-2 bg-slate-200 rounded-lg">Cerrar sesión</button></div>`);return}
   M=data;
   if((M.role==='prof'||isDir())&&M.teacher_status!=='aprobado')return render();
   if(!isDir())startLive();
-  if(session.user.user_metadata&&session.user.user_metadata.pw_initial===true&&M.role==='est')toast('🔑','Cambia tu contraseña','Tu contraseña inicial es tu documento. Cámbiala con el botón 🔑 Contraseña de arriba.');
   if(M.is_admin){const c=await sb.from('profiles').select('id',{count:'exact',head:true}).eq('role','prof').eq('teacher_status','pendiente');D.pend=c.count||0;const c2=await sb.from('profiles').select('id',{count:'exact',head:true}).in('role',['rector','coordinador']).eq('teacher_status','pendiente');D.pendDir=c2.count||0}
   await go(isDir()?'dcol':M.role==='prof'?'prof':'sim');
 }
-sb.auth.onAuthStateChange(ev=>{if(ev==='SIGNED_OUT'){M=null;leaveChat();if(liveChan){sb.removeChannel(liveChan);liveChan=null}render()}});
+sb.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){RECOVERY=true;M=null;authMode='recovery';render();return}if(ev==='SIGNED_OUT'){M=null;leaveChat();if(liveChan){sb.removeChannel(liveChan);liveChan=null}render()}});
 async function loadCat(){
   if(D.areas)return;
   const a=await sb.from('areas').select('nombre').order('nombre');D.areas=a.data||[];
@@ -138,7 +142,7 @@ async function doDocente(){
   if(nm.split(' ').length<2||nm.length<5)return toast('⚠️','Falta tu nombre','Escribe tu nombre y apellido.');
   if(!/^\+?\d{7,15}$/.test(tel))return toast('⚠️','Teléfono no válido','Escribe tu número de celular, solo números.');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em))return toast('⚠️','Correo no válido','Revisa tu correo electrónico.');
-  if(pw.length<6)return toast('⚠️','Contraseña muy corta','Usa mínimo 6 caracteres.');
+  if(pw.length<8)return toast('⚠️','Contraseña muy corta','Usa mínimo 8 caracteres.');
   if(!RG.dep||!RG.mun)return toast('⚠️','Falta la ubicación','Elige tu departamento y tu municipio.');
   if(!RG.otro&&!RG.col)return toast('⚠️','Falta el colegio','Elige tu colegio o marca «Mi colegio no aparece».');
   if(RG.otro&&otroTxt.length<3)return toast('⚠️','Falta el nombre del colegio','Escribe el nombre de tu colegio.');
@@ -160,9 +164,12 @@ async function doAuth(){
   const dc=(document.getElementById('dc')?.value||'').replace(/\D/g,'');
   if(authMode==='register'){
     if(dc.length<6)return toast('⚠️','Revisa tu documento','Escribe tu número de documento, solo con números (mínimo 6).');
-    password=dc;
+    const pw2=document.getElementById('pw2')?.value||'';
+    if(password.length<8)return toast('⚠️','Contraseña muy corta','Usa mínimo 8 caracteres.');
+    if(password!==pw2)return toast('⚠️','No coinciden','Las dos contraseñas deben ser iguales.');
+    if(password.replace(/\s/g,'')===dc)return toast('⚠️','Contraseña poco segura','No uses tu número de documento como contraseña.');
   }
-  if(!email||!password)return toast('⚠️','Faltan datos',authMode==='register'?'Escribe tu documento y tu correo.':'Escribe correo y contraseña.');
+  if(!email||!password)return toast('⚠️','Faltan datos',authMode==='register'?'Escribe tu documento, tu correo y una contraseña.':'Escribe correo y contraseña.');
   if(authMode==='login'){
     const{error}=await sb.auth.signInWithPassword({email,password});
     if(error){const m=(error.message||'').toLowerCase();return toast('⚠️','No se pudo entrar',m.includes('not confirmed')?'Tu correo aún no está confirmado. Usa «Reenviar correo de confirmación».':m.includes('invalid login')?'Correo o contraseña incorrectos.':error.message)}
@@ -170,10 +177,24 @@ async function doAuth(){
   }
   const full_name=v('nm'),grade=v('gr');
   if(!full_name)return toast('⚠️','Falta tu nombre','Escribe tu nombre completo.');
-  const{data,error}=await sb.auth.signUp({email,password,options:{data:{full_name,grade,document:dc,pw_initial:true}}});
-  if(error){if((error.message||'').toLowerCase().includes('database error'))return toast('⚠️','No se pudo crear la cuenta','Ese documento o ese correo ya tienen una cuenta. Si ya te registraste, pulsa «Entrar»: tu contraseña es tu número de documento.');return err(error)}
+  const{data,error}=await sb.auth.signUp({email,password,options:{data:{full_name,grade,document:dc}}});
+  if(error){if((error.message||'').toLowerCase().includes('database error'))return toast('⚠️','No se pudo crear la cuenta','Ese documento o ese correo ya tienen una cuenta. Si ya te registraste, pulsa «Entrar» o usa «¿Olvidaste tu contraseña?».');return err(error)}
   if(!data.session){authMode='login';render();return toast('📧','Revisa tu correo','Abre el enlace más reciente y luego inicia sesión.')}
   boot();
+}
+async function forgot(){
+  const email=v('em');if(!email)return toast('⚠️','Falta el correo','Escribe tu correo arriba y vuelve a pulsar.');
+  const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  if(error&&/rate|seconds|too many/i.test(error.message||''))return err(error);
+  toast('📧','Revisa tu correo','Si el correo está registrado, te enviamos un enlace para crear una nueva contraseña.');
+}
+async function doRecover(){
+  const a=document.getElementById('rp1')?.value||'',b=document.getElementById('rp2')?.value||'';
+  if(a.length<8)return toast('⚠️','Contraseña muy corta','Usa mínimo 8 caracteres.');
+  if(a!==b)return toast('⚠️','No coinciden','Las dos contraseñas deben ser iguales.');
+  const r=await sb.auth.updateUser({password:a});if(r.error)return err(r.error);
+  RECOVERY=false;authMode='login';history.replaceState(null,'',location.pathname);
+  toast('🔑','Contraseña actualizada','Ya puedes usar tu nueva contraseña.');boot();
 }
 async function resend(){
   const email=v('em');if(!email)return toast('⚠️','Falta el correo','Escribe tu correo arriba y vuelve a pulsar.');
@@ -200,7 +221,7 @@ async function savePass(){
   const err=m=>{document.getElementById('pwerr').textContent=m};
   const a=document.getElementById('pw0').value,b=document.getElementById('pw1').value,c=document.getElementById('pw2').value;
   if(!a){return err('Escribe tu contraseña actual.')}
-  if(b.length<6){return err('La nueva contraseña debe tener mínimo 6 caracteres.')}
+  if(b.length<8){return err('La nueva contraseña debe tener mínimo 8 caracteres.')}
   if(b!==c){return err('Las dos contraseñas nuevas no coinciden.')}
   if(b===a){return err('La nueva contraseña debe ser distinta a la actual.')}
   const btn=document.getElementById('pwbtn');btn.disabled=true;btn.textContent='Guardando…';err('');
@@ -209,7 +230,7 @@ async function savePass(){
     if(!email)throw new Error('No se pudo identificar tu sesión. Sal y vuelve a entrar.');
     const chk=await sb.auth.signInWithPassword({email,password:a});
     if(chk.error)throw new Error('La contraseña actual no es correcta.');
-    const r=await sb.auth.updateUser({password:b,data:{pw_initial:false}});
+    const r=await sb.auth.updateUser({password:b});
     if(r.error)throw new Error(r.error.message);
     closePass();toast('🔑','Contraseña cambiada','Úsala la próxima vez que entres.');
   }catch(e){err(e.message||'No se pudo cambiar la contraseña.');btn.disabled=false;btn.textContent='Guardar'}
@@ -315,7 +336,7 @@ async function calSave(){
 function calCsv(){
   const rows=[['archivo','documento','nombre','version','correctas','incorrectas','anuladas','motivos_anuladas','nota_0_a_5','porcentaje']];
   CAL.items.filter(i=>i.status==='ok'&&i.exam).forEach(it=>{const e=calEval(it);rows.push([it.name,it.exam.roster?.document||'',it.exam.roster?.full_name||'',vl(it.exam.version),e.ok,e.bad,e.anu,Object.entries(e.reasons).map(([k,v])=>k+': '+v).join(' | '),String(e.nota).replace('.',','),e.pct+'%'])});
-  const csv='\ufeff'+rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const csv='\ufeff'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='calificacion_hojas.csv';a.click()}
 function vCal(){
   const jobs=D.jobs||[],show=CAL.items.length>0,okn=CAL.items.filter(i=>i.status==='ok'&&i.exam).length;
@@ -405,7 +426,7 @@ async function saveDoc(){
   ED.id='';toast('✅','Docente actualizado','Los cambios ya están activos.');go('doc');
 }
 async function loadClase(){
-  const today=new Date().toISOString().slice(0,10);
+  const today=hoy();
   D.cls=await getCls();
   let cq=sb.from('chat_messages').select('author_name,body,user_id,created_at,room').order('created_at',{ascending:false}).limit(50);if(M.role==='prof')cq=cq.eq('room',M.id);
   const c=await cq;D.chat=(c.data||[]).reverse();
@@ -420,7 +441,7 @@ async function loadClase(){
 }
 function leaveChat(){if(chan){sb.removeChannel(chan);chan=null}}
 async function sendChat(){const i=document.getElementById('msg');const body=i.value.trim();if(!body)return;i.value='';const{error}=await sb.from('chat_messages').insert({body});if(error)err(error)}
-async function toggleAtt(uid,on){const{error}=await sb.from('attendance').upsert({user_id:uid,session_date:new Date().toISOString().slice(0,10),present:on});if(error)return err(error);if(uid===M.id)D.me=on;else D.att[uid]=on;if(M.role==='est')render()}
+async function toggleAtt(uid,on){const{error}=await sb.from('attendance').upsert({user_id:uid,session_date:hoy(),present:on});if(error)return err(error);if(uid===M.id)D.me=on;else D.att[uid]=on;if(M.role==='est')render()}
 async function saveClass(){
   const url=v('cu'),title=v('ct')||'Clase en vivo',live=document.getElementById('cl').checked;
   if(url&&!/^https:\/\//i.test(url))return toast('⚠️','Enlace no válido','Debe empezar con https://');
@@ -525,13 +546,13 @@ async function loadRoster(){
   if(RF.bad&&RF.bad.length)return toast('⚠️','Faltan datos en '+RF.bad.length+' fila(s)','Todos los estudiantes deben tener nombre completo y documento. Corrige la lista y vuelve a subirla.');
   if(!RF.rows.length)return toast('⚠️','No hay estudiantes para cargar','Primero sube un archivo o escribe la lista y revísala.');
   const c=D.courses.find(x=>x.id===RF.c),all=RF.rows.map(x=>({email:x.email||null,full_name:x.full_name,document:x.document||null}));
-  let ok=0,conf=0;
+  let ok=0,conf=0,lk=0;
   for(let i=0;i<all.length;i+=400){
     const r=await sb.rpc('assign_roster',{p_course:RF.c,p_rows:all.slice(i,i+400)});
     if(r.error)return err(r.error);
-    ok+=r.data.ok;conf+=(+r.data.conflicts||0);
+    ok+=(+r.data?.ok||0);conf+=(+r.data?.conflicts||0);lk+=(+r.data?.linked||0);
   }
-  toast('✅','Lista cargada',ok+' estudiantes en '+c.grade+'° '+c.name+'.'+(conf?' '+conf+' ya pertenecen a otro docente y no se cargaron.':''));
+  toast('✅','Lista cargada',ok+' estudiantes en '+c.grade+'° '+c.name+'.'+(lk?' '+lk+' ya tenían cuenta y quedaron en el curso.':'')+(conf?' '+conf+' ya pertenecen a otro docente y no se cargaron.':''));
   RF.txt='';RF.rows=[];RF.skip=0;RF.bad=[];RF.sk=[];RF.fname='';go('cur');
 }
 async function delRoster(id){const{error}=await sb.from('roster').delete().eq('id',id);if(error)return err(error);go('cur')}
@@ -549,7 +570,7 @@ async function createSim(){
   const due=SF.due?new Date(SF.due+'T23:59:00').toISOString():null;
   const{data,error}=await sb.from('simulacros').insert({title,kind:SF.k,description:(SF.desc||'').trim()||null,grade:SF.g,subject:SF.s,n_questions:SF.n,minutes_per_question:SF.m,max_attempts:SF.a,due_at:due}).select('id').single();
   if(error)return err(error);
-  const t=await sb.from('simulacro_targets').insert(SF.cs.map(c=>({simulacro_id:data.id,course_id:c})));if(t.error)return err(t.error);
+  const t=await sb.from('simulacro_targets').insert(SF.cs.map(c=>({simulacro_id:data.id,course_id:c})));if(t.error){await sb.from('simulacros').delete().eq('id',data.id);return err(t.error)}
   SF.t='';SF.desc='';SF.due='';SF.cs=[];toast('✅','Activado','Ya lo ven los estudiantes de los cursos que marcaste.');go('simp');
 }
 async function setSim(id,patch){const{error}=await sb.from('simulacros').update(patch).eq('id',id);if(error)return err(error);go('simp')}
@@ -710,9 +731,9 @@ async function startSim(simId){
   if(data.length<n)return toast('⚠️','No disponible','Hay '+data.length+' preguntas visibles y se piden '+n+'. Avisa a tu docente.');
   const qs=data.sort(()=>Math.random()-.5).slice(0,n);
   const total=qs.length*secs;
-  S={grade:sim.grade,subject:sim.subject,qs,ans:{},total,left:total,i:0,sending:false,simId:sim.id,title:sim.title};
+  S={grade:sim.grade,subject:sim.subject,qs,ans:{},total,left:total,end:Date.now()+total*1000,i:0,sending:false,simId:sim.id,title:sim.title};
   clearInterval(timer);
-  timer=setInterval(()=>{if(!S)return;S.left--;const e=document.getElementById('clk');if(e){e.textContent=fmt(S.left);e.className='font-mono text-2xl font-bold '+(S.left<30?'text-red-600':'text-indigo-700')}if(S.left<=0)finish(true)},1000);
+  timer=setInterval(()=>{if(!S)return;S.left=Math.max(0,Math.round((S.end-Date.now())/1000));const e=document.getElementById('clk');if(e){e.textContent=fmt(S.left);e.className='font-mono text-2xl font-bold '+(S.left<30?'text-red-600':'text-indigo-700')}if(S.left<=0)finish(true)},1000);
   render();
 }
 async function finish(auto){
@@ -727,7 +748,7 @@ async function finish(auto){
 
 /* ---------- CSV ---------- */
 function exportCSV(){
-  const esc=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+  const esc=csvCell;
   const rows=[['Estudiante','Curso','Grado','Materia','Simulacro o tarea','Puntaje','Fecha']].concat((D.all||[]).map(a=>[a.profiles?.full_name,a.profiles?.courses?.name||'',a.grade+'°',a.subject,a.simulacros?.title||'(sin asignar)',a.score,new Date(a.created_at).toLocaleString('es-CO')]));
   const blob=new Blob(['\ufeff'+rows.map(r=>r.map(esc).join(',')).join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='historial_notas.csv';document.body.appendChild(a);a.click();a.remove();
@@ -753,7 +774,7 @@ function vAuth(){
     <input class="w-full border rounded-lg p-2" placeholder="Nombre completo" value="${E(RG.nm)}" oninput="RG.nm=this.value">
     <input class="w-full border rounded-lg p-2" type="tel" placeholder="Teléfono celular" value="${E(RG.tel)}" oninput="RG.tel=this.value">
     <input class="w-full border rounded-lg p-2" type="email" placeholder="Correo electrónico" value="${E(RG.em)}" oninput="RG.em=this.value">
-    <input class="w-full border rounded-lg p-2" type="password" placeholder="Contraseña (mín. 6)" value="${E(RG.pw)}" oninput="RG.pw=this.value">
+    <input class="w-full border rounded-lg p-2" type="password" placeholder="Contraseña (mín. 8)" value="${E(RG.pw)}" oninput="RG.pw=this.value">
     <label class="text-sm block">Departamento<select class="w-full border rounded-lg p-2 mt-1" onchange="onDep(this.value)"><option value="">Elige tu departamento…</option>${deps.map(d=>`<option value="${d.id}" ${String(d.id)===String(RG.dep)?'selected':''}>${E(d.nombre)}</option>`).join('')}</select></label>
     <label class="text-sm block">Municipio<select class="w-full border rounded-lg p-2 mt-1" ${RG.dep?'':'disabled'} onchange="onMun(this.value)"><option value="">Elige tu municipio…</option>${muns.map(x=>`<option value="${x.id}" ${String(x.id)===String(RG.mun)?'selected':''}>${E(x.nombre)}</option>`).join('')}</select></label>
     ${RG.otro?`<label class="text-sm block">Nombre de tu colegio<input class="w-full border rounded-lg p-2 mt-1" placeholder="Escribe el nombre de tu colegio" value="${E(RG.otroTxt)}" oninput="RG.otroTxt=this.value"></label>`:`<label class="text-sm block">Colegio<input id="colq" class="w-full border rounded-lg p-2 mt-1" placeholder="Escribe para buscar tu colegio…" ${RG.mun?'':'disabled'} value="${E(RG.q)}" oninput="RG.q=this.value;paintCols()"><select id="colsel" class="w-full border rounded-lg p-2 mt-1" ${RG.mun?'':'disabled'} onchange="RG.col=this.value">${colOpts()}</select></label>`}
@@ -761,15 +782,16 @@ function vAuth(){
     <div class="text-sm"><div class="font-semibold mb-1">Grados en los que dictas clase</div><div class="flex flex-wrap gap-3">${[6,7,8,9,10,11].map(g=>`<label class="flex items-center gap-2"><input type="checkbox" ${RG.gs.includes(g)?'checked':''} onchange="togG(${g},this.checked)"> ${g}°</label>`).join('')}</div></div>
     ${RG.gs.map(g=>`<label class="text-sm block">Cursos de ${g}° (separados por coma, ej.: A, B, C o 901, 902)<input class="w-full border rounded-lg p-2 mt-1" value="${E(RG.cur[g]||'')}" oninput="RG.cur[${g}]=this.value"></label>`).join('')}
     <label class="text-sm block">Área<select class="w-full border rounded-lg p-2 mt-1" onchange="RG.area=this.value;RG.asg=[];render()"><option value="">Elige tu área…</option>${(D.areas||[]).map(a=>`<option ${a.nombre===RG.area?'selected':''}>${E(a.nombre)}</option>`).join('')}</select></label>
-    ${RG.area?`<div class="text-sm"><div class="font-semibold mb-1">Asignatura(s) que dictas</div><div class="flex flex-wrap gap-3">${asg.map(x=>`<label class="flex items-center gap-2"><input type="checkbox" ${RG.asg.includes(x.nombre)?'checked':''} onchange="togA('${E(x.nombre)}',this.checked)"> ${E(x.nombre)}</label>`).join('')}</div></div>`:''}
+    ${RG.area?`<div class="text-sm"><div class="font-semibold mb-1">Asignatura(s) que dictas</div><div class="flex flex-wrap gap-3">${asg.map(x=>`<label class="flex items-center gap-2"><input type="checkbox" ${RG.asg.includes(x.nombre)?'checked':''} data-n="${E(x.nombre)}" onchange="togA(this.dataset.n,this.checked)"> ${E(x.nombre)}</label>`).join('')}</div></div>`:''}
     <button onclick="doAuth()" class="w-full py-2 bg-indigo-600 text-white rounded-lg">Enviar mi registro como docente</button></div>`;
   }
+  if(m==='recovery')return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3"><h1 class="text-2xl font-extrabold text-indigo-700 text-center">🎓 AulaICFES</h1><p class="text-sm text-slate-600 text-center">Crea tu nueva contraseña.</p><input id="rp1" type="password" autocomplete="new-password" class="w-full border rounded-lg p-2" placeholder="Nueva contraseña (mín. 8)"><input id="rp2" type="password" autocomplete="new-password" class="w-full border rounded-lg p-2" placeholder="Repite la contraseña" onkeydown="if(event.key==='Enter')doRecover()"><button onclick="doRecover()" class="w-full py-2 bg-indigo-600 text-white rounded-lg">Guardar contraseña</button></div>`;
   const reg=m==='register';
   return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3">${head}
-  ${reg?`<input id="dc" inputmode="numeric" autocomplete="off" class="w-full border rounded-lg p-2" placeholder="Número de documento (sin puntos)"><input id="nm" class="w-full border rounded-lg p-2" placeholder="Nombre completo"><select id="gr" class="w-full border rounded-lg p-2">${[6,7,8,9,10,11].map(g=>`<option value="${g}">Grado ${g}°</option>`).join('')}</select><p class="text-xs text-slate-500">Tu contraseña inicial será tu número de documento. Después de entrar puedes cambiarla con el botón 🔑 Contraseña. Tu docente te asignará a tu curso si tu documento está en su lista.</p>`:''}
-  <input id="em" type="email" class="w-full border rounded-lg p-2" placeholder="Correo">${reg?'':'<input id="pw" type="password" class="w-full border rounded-lg p-2" placeholder="Contraseña (si eres estudiante, tu número de documento)" onkeydown="if(event.key===\'Enter\')doAuth()">'}
+  ${reg?`<input id="dc" inputmode="numeric" autocomplete="off" class="w-full border rounded-lg p-2" placeholder="Número de documento (sin puntos)"><input id="nm" class="w-full border rounded-lg p-2" placeholder="Nombre completo"><select id="gr" class="w-full border rounded-lg p-2">${[6,7,8,9,10,11].map(g=>`<option value="${g}">Grado ${g}°</option>`).join('')}</select><p class="text-xs text-slate-500">Usa un correo tuyo y confirma el enlace que te llegará. Tu docente te asignará a tu curso cuando tu correo (ya confirmado) coincida con el de su lista.</p>`:''}
+  <input id="em" type="email" class="w-full border rounded-lg p-2" placeholder="Correo">${reg?'<input id="pw" type="password" autocomplete="new-password" class="w-full border rounded-lg p-2" placeholder="Crea tu contraseña (mín. 8)"><input id="pw2" type="password" autocomplete="new-password" class="w-full border rounded-lg p-2" placeholder="Repite tu contraseña" onkeydown="if(event.key===\'Enter\')doAuth()">':'<input id="pw" type="password" class="w-full border rounded-lg p-2" placeholder="Contraseña" onkeydown="if(event.key===\'Enter\')doAuth()">'}
   <button onclick="doAuth()" class="w-full py-2 bg-indigo-600 text-white rounded-lg">${reg?'Crear cuenta de estudiante':'Entrar'}</button>
-  ${reg?'':'<p class="text-xs text-slate-500 text-center">Estudiantes: tu contraseña inicial es tu número de documento.</p><button onclick="resend()" class="w-full text-xs text-slate-500 underline">Reenviar correo de confirmación</button>'}</div>`}
+  ${reg?'':'<button onclick="forgot()" class="w-full text-xs text-slate-500 underline">¿Olvidaste tu contraseña?</button><button onclick="resend()" class="w-full text-xs text-slate-500 underline">Reenviar correo de confirmación</button>'}</div>`}
 function vPend(){const st=M.teacher_status,rej=st==='rechazado';return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><div class="text-4xl">${rej?'⛔':'🕒'}</div><h2 class="text-xl font-bold">${rej?'Tu solicitud de docente no fue aprobada':'Tu cuenta de docente está pendiente de aprobación'}</h2><p class="text-sm text-slate-600">${rej?'Comunícate con el administrador de AulaICFES si crees que es un error.':'El administrador revisará tus datos. Cuando te apruebe, vuelve a iniciar sesión y verás el panel de docente.'}</p><div class="text-left text-sm border rounded-xl p-3 space-y-1"><div><b>Nombre:</b> ${E(M.full_name)}</div><div><b>Correo:</b> ${E(M.email||'')}</div><div><b>Teléfono:</b> ${E(M.phone||'')}</div><div><b>Área:</b> ${E(M.area||'')}</div><div><b>Asignaturas:</b> ${E((M.asignaturas||[]).join(', '))}</div><div><b>Grados:</b> ${E((M.grados||[]).join('°, '))}${(M.grados||[]).length?'°':''}</div></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-slate-200">Salir</button></div>`}
 const dirTabs=()=>M.role==='rector'?[['dcol','🏫 Mi colegio'],['ddoc','👩‍🏫 Docentes'],['dhor','🗓 Horarios'],['dhist','🧾 Historial']]:[['dcol','🏫 Mi colegio'],['ddoc','👩‍🏫 Docentes'],['dhor','🗓 Horarios']];
 function vPendDir(){const st=M.teacher_status,rej=st==='rechazado',r=M.role==='rector'?'rector':'coordinador',quien=M.role==='rector'?'El administrador':'El rector de tu colegio o el administrador';return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><div class="text-4xl">${rej?'⛔':'🕒'}</div><h2 class="text-xl font-bold">${rej?'Tu solicitud de '+r+' no fue aprobada':'Tu cuenta de '+r+' está pendiente de aprobación'}</h2><p class="text-sm text-slate-600">${rej?'Comunícate con el administrador de AulaICFES si crees que es un error.':quien+' revisará tus datos. Cuando te apruebe, vuelve a iniciar sesión.'}</p><div class="text-left text-sm border rounded-xl p-3 space-y-1"><div><b>Nombre:</b> ${E(M.full_name)}</div><div><b>Correo:</b> ${E(M.email||'')}</div><div><b>Teléfono:</b> ${E(M.phone||'')}</div></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-slate-200">Salir</button></div>`}
@@ -779,7 +801,7 @@ function vDoc(){
   const asgE=(D.asigs||[]).filter(x=>x.area===ED.area);
   const form=d=>ED.id===d.id?`<div class="border-t mt-3 pt-3 space-y-3"><div class="grid sm:grid-cols-2 gap-3"><label class="text-sm">Nombre<input class="w-full border rounded-lg p-2 mt-1" value="${E(ED.nm)}" oninput="ED.nm=this.value"></label><label class="text-sm">Teléfono<input class="w-full border rounded-lg p-2 mt-1" value="${E(ED.tel)}" oninput="ED.tel=this.value"></label></div>
   <label class="text-sm block">Área<select class="w-full border rounded-lg p-2 mt-1" onchange="ED.area=this.value;ED.asg=[];render()"><option value="">Elige el área…</option>${(D.areas||[]).map(a=>`<option ${a.nombre===ED.area?'selected':''}>${E(a.nombre)}</option>`).join('')}</select></label>
-  ${ED.area?`<div class="text-sm"><div class="font-semibold mb-1">Asignatura(s)</div><div class="flex flex-wrap gap-3">${asgE.map(x=>`<label class="flex items-center gap-2"><input type="checkbox" ${ED.asg.includes(x.nombre)?'checked':''} onchange="togEA('${E(x.nombre)}',this.checked)"> ${E(x.nombre)}</label>`).join('')}</div></div>`:''}
+  ${ED.area?`<div class="text-sm"><div class="font-semibold mb-1">Asignatura(s)</div><div class="flex flex-wrap gap-3">${asgE.map(x=>`<label class="flex items-center gap-2"><input type="checkbox" ${ED.asg.includes(x.nombre)?'checked':''} data-n="${E(x.nombre)}" onchange="togEA(this.dataset.n,this.checked)"> ${E(x.nombre)}</label>`).join('')}</div></div>`:''}
   <div class="text-sm"><div class="font-semibold mb-1">Grados en los que dicta</div><div class="flex flex-wrap gap-3">${[6,7,8,9,10,11].map(g=>`<label class="flex items-center gap-2"><input type="checkbox" ${ED.gs.includes(g)?'checked':''} onchange="togEG(${g},this.checked)"> ${g}°</label>`).join('')}</div></div>
   <div class="flex gap-2"><button onclick="saveDoc()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm">Guardar cambios</button><button onclick="ED.id='';render()" class="px-4 py-2 rounded-lg bg-slate-200 text-sm">Cancelar</button></div></div>`:'';
   return`<div class="space-y-4"><div class="bg-white rounded-2xl p-4 shadow"><h2 class="text-xl font-bold">👩‍🏫 Docentes</h2><p class="text-sm text-slate-600">Cada docente aprobado ve solo sus propios cursos, estudiantes y notas, y solo el banco de preguntas de su asignatura. Aquí apruebas, rechazas y editas su área, asignaturas y grados.</p></div>

@@ -260,6 +260,13 @@ function validarFactibilidad(E){
     porDoc.set(t.doc,(porDoc.get(t.doc)||[]).concat(t));
     porGrp.set(t.g.id,(porGrp.get(t.g.id)||[]).concat(t));
   }
+  if(P.aulas.length&&nDias&&nFr){
+    // En cuanto hay aulas registradas, cada clase necesita una. Capacidad semanal = aulas × espacios.
+    const total=P.tasks.reduce((s,t)=>s+t.horas,0),cap=P.aulas.length*nDias*nFr;
+    if(total>cap)add(`Hay ${total} hora(s) de clase por ubicar y las ${P.aulas.length} aula(s) registradas solo ofrecen ${cap} espacio(s) a la semana.`,'Cuando hay aulas registradas, cada clase necesita una; si solo registraste laboratorios, las demás clases no tienen salón.','Registra un salón por cada grupo (además de los especiales) o elimina las aulas si no necesitas controlarlas.');
+    const tipos=new Map();for(const t of P.tasks)if(t.s.aula_tipo)tipos.set(t.s.aula_tipo,(tipos.get(t.s.aula_tipo)||0)+t.horas);
+    for(const [tp,h] of tipos){const n=P.aulas.filter(a=>a.tipo===tp).length;if(n&&h>n*nDias*nFr)add(`Las asignaturas que requieren aula "${tp}" suman ${h} hora(s) y solo hay ${n*nDias*nFr} espacio(s) en ${n} aula(s) de ese tipo.`,'Hay pocas aulas de ese tipo para tantas horas.','Registra más aulas de ese tipo o reduce las horas de esas asignaturas.')}
+  }
   for(const [id,ts] of porDoc){
     const h=ts.reduce((s,t)=>s+t.horas,0),u=new Set();ts.forEach(t=>t.slots.forEach(s=>u.add(sk(s.dia,s.fi))));
     if(h>u.size)add(`${(P.doc.get(id)||{nombre:'Un docente'}).nombre} tiene ${h} hora(s) por dictar y solo ${u.size} espacio(s) posible(s).`,'Su disponibilidad es menor que la suma de sus horas.','Amplía su disponibilidad o reparte parte de su carga con otro docente.');

@@ -150,7 +150,7 @@ function vReg(headHtml){
   <input class="w-full border rounded-lg p-2" placeholder="Nombre completo" value="${E(RG.nm)}" oninput="RG.nm=this.value">
   <input class="w-full border rounded-lg p-2" type="tel" placeholder="Teléfono celular" value="${E(RG.tel)}" oninput="RG.tel=this.value">
   <input class="w-full border rounded-lg p-2" type="email" placeholder="Correo electrónico" value="${E(RG.em)}" oninput="RG.em=this.value">
-  <input class="w-full border rounded-lg p-2" type="password" placeholder="Contraseña (mín. 6)" value="${E(RG.pw)}" oninput="RG.pw=this.value">
+  <input class="w-full border rounded-lg p-2" type="password" placeholder="Contraseña (mín. 8)" value="${E(RG.pw)}" oninput="RG.pw=this.value">
   <label class="text-sm block">Departamento<select class="w-full border rounded-lg p-2 mt-1" onchange="onDep(this.value)"><option value="">Elige tu departamento…</option>${deps.map(d=>`<option value="${d.id}" ${String(d.id)===String(RG.dep)?'selected':''}>${E(d.nombre)}</option>`).join('')}</select></label>
   <label class="text-sm block">Municipio<select class="w-full border rounded-lg p-2 mt-1" ${RG.dep?'':'disabled'} onchange="onMun(this.value)"><option value="">Elige tu municipio…</option>${muns.map(x=>`<option value="${x.id}" ${String(x.id)===String(RG.mun)?'selected':''}>${E(x.nombre)}</option>`).join('')}</select></label>
   <label class="text-sm block">Colegio<input id="colq" class="w-full border rounded-lg p-2 mt-1" placeholder="Escribe para buscar tu colegio…" ${RG.mun?'':'disabled'} value="${E(RG.q)}" oninput="RG.q=this.value;paintCols()"><select id="colsel" class="w-full border rounded-lg p-2 mt-1" ${RG.mun?'':'disabled'} onchange="RG.col=this.value">${colOpts()}</select></label>
@@ -163,7 +163,7 @@ async function doReg(){
   if(nm.split(' ').length<2||nm.length<5)return toast('⚠️','Falta tu nombre','Escribe tu nombre y apellido.');
   if(!/^\+?\d{7,15}$/.test(tel))return toast('⚠️','Teléfono no válido','Escribe tu número de celular, solo números.');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em))return toast('⚠️','Correo no válido','Revisa tu correo electrónico.');
-  if(pw.length<6)return toast('⚠️','Contraseña muy corta','Usa mínimo 6 caracteres.');
+  if(pw.length<8)return toast('⚠️','Contraseña muy corta','Usa mínimo 8 caracteres.');
   if(!RG.dep||!RG.mun||!RG.col)return toast('⚠️','Falta el colegio','Elige tu departamento, tu municipio y tu colegio de la lista.');
   const{data,error}=await sb.auth.signUp({email:em,password:pw,options:{data:{account:rol,full_name:nm,phone:tel,colegio_id:String(RG.col)}}});
   if(error)return err(error);
