@@ -6,7 +6,7 @@
 (function(){
 'use strict';
 const A={sum:null,pend:[],list:[],role:'',sel:null,sub:'act',det:null,tdet:false,fst:'todos',q:'',hist:[],names:{}};
-const C={sub:'territorio',deps:[],muns:[],cols:[],colsTotal:0,areas:[],asigs:[],depSel:'',munSel:''};
+const C={sub:'territorio',deps:[],muns:[],cols:[],colsTotal:0,areas:[],asigs:[],depSel:'',munSel:'',colSel:'',colQ:''};
 const ok=r=>{if(r&&r.error)throw r.error;return(r&&r.data)||[]};
 const cnt=q=>q.then(r=>{if(r.error)throw r.error;return r.count||0});
 const head=t=>sb.from(t).select('id',{count:'exact',head:true});
@@ -59,9 +59,10 @@ async function loadHist(){
 }
 async function loadMuns(dep){C.muns=dep?ok(await sb.from('municipios').select('id,nombre,codigo_divipola').eq('departamento_id',dep).order('nombre').limit(1000)):[]}
 async function loadCols(){
-  if(!C.munSel){C.cols=[];C.colsTotal=0;return}
-  const r=await sb.from('colegios').select('id,nombre,codinst',{count:'exact'}).eq('municipio_id',C.munSel).order('nombre').limit(300);
-  if(r.error)throw r.error;C.cols=r.data||[];C.colsTotal=r.count||C.cols.length;
+  if(!C.munSel){C.cols=[];C.colsTotal=0;C.colSel='';return}
+  let all=[],o=0;
+  for(;;){const r=await sb.from('colegios').select('id,nombre,codinst,fuente').eq('municipio_id',C.munSel).order('nombre').order('id').range(o,o+999);if(r.error)throw r.error;const d=r.data||[];all=all.concat(d);if(d.length<1000)break;o+=1000}
+  C.cols=all;C.colsTotal=all.length;if(!all.some(x=>String(x.id)===String(C.colSel)))C.colSel='';
 }
 async function loadCatalog(){
   const [d,a,s]=await Promise.all([sb.from('departamentos').select('id,nombre,codigo_divipola').order('nombre'),sb.from('areas').select('id,nombre').order('nombre'),sb.from('asignaturas').select('id,nombre,area_id,banco_subject').order('nombre')]);
@@ -127,6 +128,14 @@ function vHist(){
 const inp=(id,ph,extra='')=>`<input id="${id}" class="w-full border rounded-lg p-2" placeholder="${ph}" ${extra}>`;
 const selDep=()=>`<label class="text-sm block">Departamento<select class="w-full border rounded-lg p-2 mt-1" onchange="ADM.dep(this.value)"><option value="">Elige un departamento…</option>${C.deps.map(d=>`<option value="${d.id}" ${String(d.id)===String(C.depSel)?'selected':''}>${E(d.nombre)}</option>`).join('')}</select></label>`;
 const selMun=()=>`<label class="text-sm block">Municipio<select class="w-full border rounded-lg p-2 mt-1" ${C.depSel?'':'disabled'} onchange="ADM.mun(this.value)"><option value="">Elige un municipio…</option>${C.muns.map(m=>`<option value="${m.id}" ${String(m.id)===String(C.munSel)?'selected':''}>${E(m.nombre)}</option>`).join('')}</select></label>`;
+const colOpts=()=>{const q=C.colQ.toLowerCase(),l=q?C.cols.filter(c=>c.nombre.toLowerCase().includes(q)||(c.codinst||'').includes(q)):C.cols;return`<option value="">${l.length?'Elige una institución…':'Sin resultados'}</option>`+l.map(c=>`<option value="${c.id}" ${String(c.id)===String(C.colSel)?'selected':''}>${E(c.nombre)}</option>`).join('')};
+const selCol=()=>`<div class="text-sm"><label class="block">Institución o colegio<select id="cat-colsel" class="w-full border rounded-lg p-2 mt-1" ${C.munSel?'':'disabled'} onchange="ADM.colsel(this.value)">${C.munSel?colOpts():'<option value="">Elige un municipio primero…</option>'}</select></label>${C.munSel?`<input class="w-full border rounded-lg p-2 mt-1 text-sm" placeholder="Buscar por nombre o código…" value="${E(C.colQ)}" oninput="ADM.colq(this.value)"><span class="text-xs text-slate-500">${C.cols.length} institución(es) en este municipio</span>`:''}</div>`;
+const colDet=()=>{
+  const c=C.cols.find(x=>String(x.id)===String(C.colSel));
+  if(!c)return'<p class="text-sm text-slate-500">Elige una institución en la tercera lista para ver sus datos.</p>';
+  const m=C.muns.find(x=>String(x.id)===String(C.munSel)),d=C.deps.find(x=>String(x.id)===String(C.depSel));
+  const origen=c.fuente==='MEN-DUE-2016'?'Directorio del Ministerio de Educación (2016). Puede estar desactualizado.':'Agregada manualmente.';
+  return`<div class="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2"><div><div class="font-semibold">${E(c.nombre)}</div><div class="text-xs text-slate-500">Código DANE: ${E(c.codinst||'—')}</div><div class="text-xs text-slate-500">${E(m?m.nombre:'')} · ${E(d?d.nombre:'')}</div><div class="text-xs text-slate-500">Origen: ${origen}</div></div>${btn(`ADM.del('colegios','${c.id}')`,'Eliminar institución','bg-slate-200')}</div>`};
 const bulk=(id,hint,fn)=>`<details class="mt-2"><summary class="text-sm text-indigo-700">Pegar una lista (varios a la vez)</summary><p class="text-xs text-slate-500 my-1">${hint}</p><textarea id="${id}" rows="6" class="w-full border rounded-lg p-2 text-sm" placeholder="Una fila por línea"></textarea>${btn(fn,'Agregar la lista','bg-indigo-600 text-white')}</details>`;
 const delBtn=(t,id,l)=>btn(`ADM.del('${t}','${id}')`,'Eliminar','bg-slate-200');
 function vCat(){
@@ -136,7 +145,7 @@ function vCat(){
     b=card(`<h3 class="font-semibold mb-2">Departamentos (${C.deps.length})</h3><div class="flex flex-wrap gap-2 mb-2">${C.deps.map(d=>`<span class="px-3 py-1 rounded-lg bg-slate-100 text-sm">${E(d.nombre)} <span class="text-xs text-slate-500">${E(d.codigo_divipola||'')}</span></span>`).join('')||'<span class="text-sm text-slate-500">Todavía no hay departamentos.</span>'}</div><div class="grid sm:grid-cols-3 gap-2">${inp('cat-dnom','Nombre del departamento')}${inp('cat-dcod','Código DIVIPOLA (ej.: 73)')}${btn('ADM.addDep()','Agregar departamento','bg-emerald-600 text-white')}</div>`)
      +card(`<h3 class="font-semibold mb-2">Municipios</h3>${selDep()}${C.depSel?`<p class="text-xs text-slate-500 my-2">${C.muns.length} municipio(s) cargados en este departamento.</p><div class="flex flex-wrap gap-2 mb-2">${C.muns.map(m=>`<span class="px-3 py-1 rounded-lg bg-slate-100 text-sm">${E(m.nombre)} <span class="text-xs text-slate-500">${E(m.codigo_divipola||'')}</span> <button onclick="ADM.del('municipios','${m.id}')" class="text-xs text-slate-500" title="Eliminar">✕</button></span>`).join('')}</div><div class="grid sm:grid-cols-3 gap-2">${inp('cat-mnom','Nombre del municipio')}${inp('cat-mcod','Código DIVIPOLA (ej.: 73055)')}${btn('ADM.addMun()','Agregar municipio','bg-emerald-600 text-white')}</div>${bulk('cat-mbulk','Formato por línea: <b>Nombre;Código DIVIPOLA</b> (puedes copiar dos columnas desde Excel).','ADM.bulkMun()')}`:''}`);
   }else if(C.sub==='colegios'){
-    b=card(`<h3 class="font-semibold mb-2">Colegios</h3><div class="grid sm:grid-cols-2 gap-2">${selDep()}${selMun()}</div>${C.munSel?`<p class="text-xs text-slate-500 my-2">${C.colsTotal} colegio(s) en este municipio${C.colsTotal>C.cols.length?` (se muestran ${C.cols.length})`:''}.</p><div class="space-y-1 mb-2">${C.cols.map(c=>`<div class="border rounded-xl p-2 flex flex-wrap items-center justify-between gap-2 text-sm"><div>${E(c.nombre)} <span class="text-xs text-slate-500">${E(c.codinst||'')}</span></div>${delBtn('colegios',c.id)}</div>`).join('')||'<p class="text-sm text-slate-500">Todavía no hay colegios en este municipio.</p>'}</div><div class="grid sm:grid-cols-3 gap-2">${inp('cat-cnom','Nombre del colegio')}${inp('cat-ccod','Código DANE (opcional)')}${btn('ADM.addCol()','Agregar colegio','bg-emerald-600 text-white')}</div>${bulk('cat-cbulk','Formato por línea: <b>Nombre;Código DANE</b> (el código es opcional).','ADM.bulkCol()')}`:'<p class="text-sm text-slate-500 mt-2">Elige un departamento y un municipio para ver o agregar colegios. Si tu municipio no aparece, agrégalo antes en «Departamentos y municipios».</p>'}`);
+    b=card(`<h3 class="font-semibold mb-2">Instituciones educativas</h3><p class="text-xs text-slate-500 mb-2">Elige en orden: departamento, municipio e institución. Las tres son listas desplegables.</p><div class="grid sm:grid-cols-3 gap-2">${selDep()}${selMun()}${selCol()}</div>${C.munSel?`<div id="cat-coldet" class="mt-3">${colDet()}</div><details class="mt-3"><summary class="text-sm text-indigo-700">Agregar una institución que no está en la lista</summary><div class="grid sm:grid-cols-3 gap-2 mt-2">${inp('cat-cnom','Nombre de la institución')}${inp('cat-ccod','Código DANE (12 dígitos)')}${btn('ADM.addCol()','Agregar institución','bg-emerald-600 text-white')}</div>${bulk('cat-cbulk','Formato por línea: <b>Nombre;Código DANE</b>.','ADM.bulkCol()')}</details>`:'<p class="text-sm text-slate-500 mt-3">Cuando elijas departamento y municipio podrás elegir la institución en la tercera lista.</p>'}`);
   }else if(C.sub==='areas'){
     b=card(`<h3 class="font-semibold mb-2">Áreas (${C.areas.length})</h3><div class="space-y-1 mb-2">${C.areas.map(a=>`<div class="border rounded-xl p-2 flex items-center justify-between gap-2 text-sm"><div>${E(a.nombre)}</div>${delBtn('areas',a.id)}</div>`).join('')||'<p class="text-sm text-slate-500">Todavía no hay áreas.</p>'}</div><div class="grid sm:grid-cols-3 gap-2">${inp('cat-anom','Nombre del área')}${btn('ADM.addArea()','Agregar área','bg-emerald-600 text-white')}${btn('ADM.stdAreas()','Cargar las 5 áreas de Saber 11','bg-indigo-600 text-white')}</div><p class="text-xs text-slate-500 mt-2">Las 5 áreas de Saber 11: Lectura Crítica, Matemáticas, Sociales y Ciudadanas, Ciencias Naturales e Inglés. Solo se agregan las que falten.</p>`);
   }else{
@@ -193,8 +202,10 @@ window.ADM={
     try{await refreshCurrent()}catch(e){return err(e)}render();
   },
   cat(k){C.sub=k;render()},
-  async dep(v){C.depSel=v;C.munSel='';C.cols=[];C.colsTotal=0;try{await loadMuns(v)}catch(e){err(e)}render()},
-  async mun(v){C.munSel=v;try{await loadCols()}catch(e){err(e)}render()},
+  async dep(v){C.depSel=v;C.munSel='';C.colSel='';C.colQ='';C.cols=[];C.colsTotal=0;try{await loadMuns(v)}catch(e){err(e)}render()},
+  async mun(v){C.munSel=v;C.colSel='';C.colQ='';try{await loadCols()}catch(e){err(e)}render()},
+  colq(v){C.colQ=v;const e=document.getElementById('cat-colsel');if(e)e.innerHTML=colOpts()},
+  colsel(v){C.colSel=v;const e=document.getElementById('cat-coldet');if(e)e.innerHTML=colDet()},
   async addDep(){const n=val('cat-dnom'),c=val('cat-dcod');if(n.length<3)return toast('⚠️','Falta el nombre','Escribe el nombre del departamento.');
     const r=await sb.from('departamentos').insert({nombre:n,codigo_divipola:c||null});if(r.error)return err(r.error);toast('✅','Guardado','Departamento agregado.');await afterCat()},
   async addMun(){const n=val('cat-mnom'),c=val('cat-mcod');if(!C.depSel)return toast('⚠️','Elige el departamento','Primero elige el departamento.');if(n.length<3)return toast('⚠️','Falta el nombre','Escribe el nombre del municipio.');

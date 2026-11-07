@@ -141,7 +141,7 @@ async function onDep(id){
 }
 async function onMun(id){
   RG.mun=id;RG.col='';RG.q='';D.cols=[];
-  if(id){const r=await sb.from('colegios').select('id,nombre').eq('municipio_id',+id).order('nombre').limit(1000);D.cols=r.data||[]}
+  if(id){let all=[],o=0;for(;;){const r=await sb.from('colegios').select('id,nombre').eq('municipio_id',+id).order('nombre').order('id').range(o,o+999);if(r.error||!r.data||!r.data.length)break;all=all.concat(r.data);if(r.data.length<1000)break;o+=1000}D.cols=all}
   render();
 }
 const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
