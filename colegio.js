@@ -182,7 +182,10 @@ window.DIR={
   },
   view(t){return({dcol:vCol,ddoc:vDocs,dhist:vHist,dadm:vAdm}[t]||(()=>''))()},
   async open(id){S.sel=id;S.sub='cur';S.det=null;render();try{await loadDet(id)}catch(e){S.sel='';err(e)}render()},
-  back(){S.sel='';S.det=null;render()},
+  back(){S.sel='';S.det=null;if(window.DIR.onBack)window.DIR.onBack();render()},
+  /* Uso del administrador: abrir (solo lectura) a cualquier docente. */
+  async openAny(p){S.docs=[p];S.sel=p.id;S.sub='cur';S.det=null;render();try{await loadDet(p.id)}catch(e){S.sel='';if(window.DIR.onBack)window.DIR.onBack();err(e)}render()},
+  viewDet(){return vDet()},
   sub(k){S.sub=k;render()},
   async setSt(id,st){
     const{error}=await sb.from('profiles').update({teacher_status:st}).eq('id',id);
