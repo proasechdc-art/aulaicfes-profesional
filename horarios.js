@@ -9,6 +9,11 @@ const SEC=[['archivo','📎 Cargar archivo'],['jornada','⏰ Jornada'],['grupos'
 const S={sec:'archivo',colegio:'',dias:[1,2,3,4,5],franjas:[],grupos:[],docentes:[],asigs:[],aulas:[],asigns:[],nd:[],restr:[],vers:[],
   imp:null,regs:[],impMsg:'',visto:false,gen:null,rev:null,busy:false,vw:{clases:[],titulo:''},verId:'',modo:'grupo',item:'',dispDoc:'',pubOk:false,miDoc:null,iniMi:false,pegarMsg:''};
 
+/* Colegio sobre el que se trabaja: el de la persona, o el que elige el administrador. */
+let FOR=null;const CID=()=>FOR||M.colegio_id;
+const INIT=JSON.stringify(S);
+function reset(){Object.assign(S,JSON.parse(INIT))}
+
 /* estilos propios (la hoja de estilos de la app no trae todas las clases) */
 if(!document.getElementById('hz-css')){const st=document.createElement('style');st.id='hz-css';st.textContent='.hz-gap1{gap:.25rem}.hz-end{align-items:flex-end}.hz-mb1{margin-bottom:.25rem}.hz-mb3{margin-bottom:.75rem}.hz-mr1{margin-right:.25rem}.hz-mt3{margin-top:.75rem}.hz-px2{padding-left:.5rem;padding-right:.5rem}.hz-sy1>*+*{margin-top:.25rem}.hz-amber{color:#b45309}.hz-emerald{color:#047857}';document.head.appendChild(st)}
 /* ---------- utilidades ---------- */
@@ -33,7 +38,7 @@ async function engine(){await loadScript('horario.js?v=1');return window.HZ}
 
 /* ---------- carga de datos ---------- */
 async function cargar(){
-  const c=M.colegio_id;if(!c)return;
+  const c=CID();if(!c)return;
   const f=t=>todas(()=>sb.from(t).select('*').eq('colegio_id',c));
   const [col,cfg,fr,gr,dc,as,au,asg,nd,rs,vs]=await Promise.all([
     sb.from('colegios').select('nombre').eq('id',c).single(),
@@ -57,7 +62,7 @@ async function cargarPublicado(){
   else S.vw={clases:[],titulo:''};
   S.miDoc=S.docentes.find(d=>d.user_id===M.id)||null;
 }
-async function cargarRegs(){S.regs=ok(await sb.from('profiles').select('id,full_name,email').eq('role','prof').eq('colegio_id',M.colegio_id).eq('teacher_status','aprobado'))}
+async function cargarRegs(){S.regs=ok(await sb.from('profiles').select('id,full_name,email').eq('role','prof').eq('colegio_id',CID()).eq('teacher_status','aprobado'))}
 function entrada(){
   return{dias:S.dias,
     franjas:S.franjas.map(f=>({id:f.id,orden:f.orden,es_clase:f.es_clase})),
@@ -215,13 +220,13 @@ function vVers(){
   return`<div class="space-y-4">${card(`<h3 class="font-semibold mb-2">🗂️ Horarios guardados</h3>${S.vers.length?`<div class="overflow-x-auto"><table class="w-full text-sm"><tr class="text-left text-slate-500"><th>Nombre</th><th>Estado</th><th>Puntos</th><th>Creado</th><th></th></tr>${l}</table></div>`:'<p class="text-sm text-slate-500">Todavía no has guardado ningún horario.</p>'}<p class="text-xs text-slate-500 mt-2">El horario <b>publicado</b> es el que ven los docentes. Al publicar uno nuevo, el anterior queda archivado.</p>`)}${S.verId?vGrid():''}</div>`;
 }
 function vHor(){
-  if(!M.colegio_id)return card('<h2 class="text-xl font-bold">🗓 Horarios</h2><p class="text-sm text-red-600">Tu cuenta no tiene un colegio del catálogo. Escribe al administrador para vincularla.</p>');
+  if(!CID())return card('<h2 class="text-xl font-bold">🗓 Horarios</h2><p class="text-sm text-red-600">Tu cuenta no tiene un colegio del catálogo. Escribe al administrador para vincularla.</p>');
   const nav=SEC.map(([k,l])=>`<button onclick="HZUI.sec('${k}')" class="px-3 py-2 rounded-lg text-sm whitespace-nowrap shadow-sm ${S.sec===k?'on':'bg-white'}">${l}</button>`).join('');
   const body=({archivo:vArchivo,jornada:vJornada,grupos:vGrupos,asigs:vAsigs,docs:vDocs,aulas:vAulas,asign:vAsign,restr:vRestr,gen:vGen,vers:vVers}[S.sec]||vJornada)();
   return`<div class="space-y-4">${card(`<h2 class="text-xl font-bold">🗓 Horarios del colegio</h2><p class="text-sm text-slate-600">${E(S.colegio)}</p><p class="text-xs text-slate-500 mt-1">Recorre las pestañas de izquierda a derecha: arma la jornada, los grupos, las asignaturas, los docentes y las asignaciones; agrega restricciones si quieres; y genera el horario.</p>`)}<nav class="flex gap-2 overflow-x-auto">${nav}</nav>${body}</div>`;
 }
 function vMi(){
-  if(!M.colegio_id)return card('<h2 class="text-xl font-bold">🗓 Mi horario</h2><p class="text-sm text-slate-600">Tu cuenta no tiene un colegio del catálogo, así que no hay horario para mostrar.</p>');
+  if(!CID())return card('<h2 class="text-xl font-bold">🗓 Mi horario</h2><p class="text-sm text-slate-600">Tu cuenta no tiene un colegio del catálogo, así que no hay horario para mostrar.</p>');
   if(!S.pubOk)return card('<h2 class="text-xl font-bold">🗓 Mi horario</h2><p class="text-sm text-slate-600">Todavía no hay un horario publicado en tu colegio. Cuando el rector o el coordinador lo publique, aparecerá aquí.</p>');
   if(S.miDoc&&!S.iniMi){S.modo='docente';S.item=S.miDoc.id;S.iniMi=true}
   const aviso=S.miDoc?'':'<p class="text-xs mt-1" style="color:#b45309">Tu cuenta todavía no está vinculada a un docente del horario. Pídele al rector o coordinador que use "Traer docentes registrados". Mientras tanto puedes ver el horario de cualquier grupo.</p>';
@@ -343,6 +348,9 @@ function preparar(tablas,nombre){
 const mut=async(fn)=>{await run(async()=>{await fn();cambio();await cargar();render()})};
 function parseGrupo(s){const m=String(s).trim().match(/^(\d{1,2})\s*[°ºo\-.]?\s*([A-Za-z0-9]+)$/);return m?{grado:+m[1],nombre:m[2].toUpperCase()}:null}
 window.HZUI={
+  /* Uso del administrador: abrir el horario de un colegio concreto y volver a lo normal al salir. */
+  async openFor(id){FOR=id;reset();await cargar();await cargarRegs();S.visto=true;if(S.franjas.length||S.grupos.length||S.docentes.length)S.sec='gen'},
+  leave(){if(FOR){FOR=null;reset()}},
   async load(t){await cargar();
     if(t==='mhor')await cargarPublicado();
     else if(t==='dhor'){await cargarRegs();if(!S.visto){S.visto=true;if(S.franjas.length||S.grupos.length||S.docentes.length)S.sec='gen'}}},
@@ -361,7 +369,7 @@ window.HZUI={
   filtrar(v){S.imp.filtro=v;const k=window.HZF.norm(v);document.querySelectorAll('.hz_fd').forEach(tr=>{tr.style.display=!k||String(tr.getAttribute('data-n')).includes(k)?'':'none'})},
   cancelarImp(){S.imp=null;rr()},
   aplicar(){return run(async()=>{
-    const I=S.imp;if(!I)return;const o=I.o,c=M.colegio_id,inf=[],salt=[];
+    const I=S.imp;if(!I)return;const o=I.o,c=CID(),inf=[],salt=[];
     if(I.selJornada&&o.jornada.length&&S.franjas.length&&I.reemplazarJornada&&!confirm('Vas a reemplazar la jornada actual. Se borrarán las clases guardadas en los horarios y la disponibilidad de los docentes. ¿Seguro?'))return;
     await cargar();await cargarRegs();
     // 1) jornada
@@ -420,49 +428,49 @@ window.HZUI={
   /* jornada */
   toggleDia(d,on){return run(async()=>{let ds=S.dias.filter(x=>x!==d);if(on)ds.push(d);ds.sort();
     if(!ds.length){toast('⚠️','Falta un día','Debe haber al menos un día de clase.');return render()}
-    ok(await sb.from('hz_config').upsert({colegio_id:M.colegio_id,dias:ds,updated_at:new Date().toISOString()},{onConflict:'colegio_id'}));S.dias=ds;cambio();render()})},
+    ok(await sb.from('hz_config').upsert({colegio_id:CID(),dias:ds,updated_at:new Date().toISOString()},{onConflict:'colegio_id'}));S.dias=ds;cambio();render()})},
   addFranja(){return mut(async()=>{const nombre=val('hz_fnom');if(!nombre)throw new Error('Escribe el nombre de la franja.');
     const orden=S.franjas.reduce((m,f)=>Math.max(m,f.orden),0)+1;if(orden>20)throw new Error('Máximo 20 franjas.');
-    ok(await sb.from('hz_franjas').insert({colegio_id:M.colegio_id,orden,nombre,inicio:val('hz_fini')||null,fin:val('hz_ffin')||null,es_clase:chk('hz_fcl')}))})},
+    ok(await sb.from('hz_franjas').insert({colegio_id:CID(),orden,nombre,inicio:val('hz_fini')||null,fin:val('hz_ffin')||null,es_clase:chk('hz_fcl')}))})},
   jornadaEjemplo(){return mut(async()=>{const J=[['1ª hora','06:30','07:20',true],['2ª hora','07:20','08:10',true],['3ª hora','08:10','09:00',true],['Descanso','09:00','09:30',false],['4ª hora','09:30','10:20',true],['5ª hora','10:20','11:10',true],['6ª hora','11:10','12:00',true]];
-    ok(await sb.from('hz_franjas').insert(J.map((j,i)=>({colegio_id:M.colegio_id,orden:i+1,nombre:j[0],inicio:j[1],fin:j[2],es_clase:j[3]}))))})},
+    ok(await sb.from('hz_franjas').insert(J.map((j,i)=>({colegio_id:CID(),orden:i+1,nombre:j[0],inicio:j[1],fin:j[2],es_clase:j[3]}))))})},
   delFranja(id){if(!confirm('¿Quitar esta franja? También se quitarán sus clases de los horarios guardados.'))return;return mut(async()=>{ok(await sb.from('hz_franjas').delete().eq('id',id))})},
   /* grupos */
   crearGrupos(){return mut(async()=>{const d=+val('hz_gd'),h=+val('hz_gh'),ls=val('hz_gl').split(/[,;\s]+/).filter(Boolean).map(s=>s.toUpperCase().slice(0,20));
     if(h<d)throw new Error('El grado final debe ser mayor o igual al inicial.');if(!ls.length)throw new Error('Escribe al menos una letra o número de grupo.');
-    const rows=[];for(let g=d;g<=h;g++)for(const l of ls)rows.push({colegio_id:M.colegio_id,grado:g,nombre:l});
+    const rows=[];for(let g=d;g<=h;g++)for(const l of ls)rows.push({colegio_id:CID(),grado:g,nombre:l});
     ok(await sb.from('hz_grupos').upsert(rows,{onConflict:'colegio_id,grado,nombre',ignoreDuplicates:true}))})},
   delGrupo(id){if(!confirm('¿Quitar este grupo? También se quitarán sus asignaciones y clases.'))return;return mut(async()=>{ok(await sb.from('hz_grupos').delete().eq('id',id))})},
   /* asignaturas */
   addAsig(){return mut(async()=>{const nombre=val('hz_anom');if(nombre.length<2)throw new Error('Escribe el nombre de la asignatura.');
-    ok(await sb.from('hz_asignaturas').insert({colegio_id:M.colegio_id,nombre,area:val('hz_aare')||nombre,aula_tipo:val('hz_atip')||null}))})},
+    ok(await sb.from('hz_asignaturas').insert({colegio_id:CID(),nombre,area:val('hz_aare')||nombre,aula_tipo:val('hz_atip')||null}))})},
   cargarCatalogo(){return mut(async()=>{const r=ok(await sb.from('asignaturas').select('nombre,areas(nombre)'));
     const ya=new Set(S.asigs.map(a=>norm(a.nombre)));
-    const rows=r.filter(x=>!ya.has(norm(x.nombre))).map(x=>({colegio_id:M.colegio_id,nombre:x.nombre,area:(x.areas&&x.areas.nombre)||x.nombre}));
+    const rows=r.filter(x=>!ya.has(norm(x.nombre))).map(x=>({colegio_id:CID(),nombre:x.nombre,area:(x.areas&&x.areas.nombre)||x.nombre}));
     if(!rows.length){toast('ℹ️','Sin cambios','Ya tienes todas las asignaturas del catálogo.');return}
     ok(await sb.from('hz_asignaturas').insert(rows));toast('✅','Listo',rows.length+' asignatura(s) cargadas.')})},
   delAsig(id){if(!confirm('¿Quitar esta asignatura? También se quitarán sus asignaciones.'))return;return mut(async()=>{ok(await sb.from('hz_asignaturas').delete().eq('id',id))})},
   /* docentes */
-  addDoc(){return mut(async()=>{const nombre=val('hz_dnom');if(nombre.length<3)throw new Error('Escribe el nombre del docente.');ok(await sb.from('hz_docentes').insert({colegio_id:M.colegio_id,nombre}))})},
-  traerDocentes(){return mut(async()=>{const r=ok(await sb.from('profiles').select('id,full_name').eq('role','prof').eq('colegio_id',M.colegio_id).eq('teacher_status','aprobado'));
+  addDoc(){return mut(async()=>{const nombre=val('hz_dnom');if(nombre.length<3)throw new Error('Escribe el nombre del docente.');ok(await sb.from('hz_docentes').insert({colegio_id:CID(),nombre}))})},
+  traerDocentes(){return mut(async()=>{const r=ok(await sb.from('profiles').select('id,full_name').eq('role','prof').eq('colegio_id',CID()).eq('teacher_status','aprobado'));
     const ya=new Set(S.docentes.map(d=>d.user_id).filter(Boolean));
-    const rows=r.filter(p=>!ya.has(p.id)&&String(p.full_name||'').length>=3).map(p=>({colegio_id:M.colegio_id,nombre:p.full_name,user_id:p.id}));
+    const rows=r.filter(p=>!ya.has(p.id)&&String(p.full_name||'').length>=3).map(p=>({colegio_id:CID(),nombre:p.full_name,user_id:p.id}));
     if(!rows.length){toast('ℹ️','Sin cambios','No hay docentes registrados nuevos para traer.');return}
     ok(await sb.from('hz_docentes').insert(rows));toast('✅','Listo',rows.length+' docente(s) traídos.')})},
   delDoc(id){if(!confirm('¿Quitar este docente? También se quitarán sus asignaciones.'))return;return mut(async()=>{ok(await sb.from('hz_docentes').delete().eq('id',id));if(S.dispDoc===id)S.dispDoc=''})},
   abrirDisp(id){S.dispDoc=id;render()},cerrarDisp(){S.dispDoc='';render()},
   toggleND(did,dia,fid){return run(async()=>{const i=S.nd.findIndex(n=>n.docente_id===did&&n.dia===dia&&n.franja_id===fid);
     if(i>=0){ok(await sb.from('hz_no_disponible').delete().eq('docente_id',did).eq('dia',dia).eq('franja_id',fid));S.nd.splice(i,1)}
-    else{ok(await sb.from('hz_no_disponible').insert({colegio_id:M.colegio_id,docente_id:did,dia,franja_id:fid}));S.nd.push({colegio_id:M.colegio_id,docente_id:did,dia,franja_id:fid})}
+    else{ok(await sb.from('hz_no_disponible').insert({colegio_id:CID(),docente_id:did,dia,franja_id:fid}));S.nd.push({colegio_id:CID(),docente_id:did,dia,franja_id:fid})}
     cambio();render()})},
   /* aulas */
-  addAula(){return mut(async()=>{const nombre=val('hz_unom');if(!nombre)throw new Error('Escribe el nombre del aula.');ok(await sb.from('hz_aulas').insert({colegio_id:M.colegio_id,nombre,tipo:val('hz_utip')||'general'}))})},
+  addAula(){return mut(async()=>{const nombre=val('hz_unom');if(!nombre)throw new Error('Escribe el nombre del aula.');ok(await sb.from('hz_aulas').insert({colegio_id:CID(),nombre,tipo:val('hz_utip')||'general'}))})},
   delAula(id){if(!confirm('¿Quitar esta aula?'))return;return mut(async()=>{ok(await sb.from('hz_aulas').delete().eq('id',id))})},
   /* asignaciones */
   addAsign(){return mut(async()=>{const g=val('hz_ag'),a=val('hz_aa'),d=val('hz_ad'),h=Math.round(+val('hz_ah'));
     if(!g||!a||!d)throw new Error('Primero crea los grupos, las asignaturas y los docentes.');if(!(h>=1&&h<=20))throw new Error('Las horas deben estar entre 1 y 20.');
     const gs=g.startsWith('grado:')?S.grupos.filter(x=>x.grado===+g.slice(6)):S.grupos.filter(x=>x.id===g.slice(2));
-    ok(await sb.from('hz_asignaciones').upsert(gs.map(x=>({colegio_id:M.colegio_id,grupo_id:x.id,asignatura_id:a,docente_id:d,horas:h})),{onConflict:'colegio_id,grupo_id,asignatura_id'}))})},
+    ok(await sb.from('hz_asignaciones').upsert(gs.map(x=>({colegio_id:CID(),grupo_id:x.id,asignatura_id:a,docente_id:d,horas:h})),{onConflict:'colegio_id,grupo_id,asignatura_id'}))})},
   delAsign(id){return mut(async()=>{ok(await sb.from('hz_asignaciones').delete().eq('id',id))})},
   pegar(){return mut(async()=>{S.pegarMsg='';const lines=val('hz_paste').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
     if(!lines.length)throw new Error('Pega al menos una línea.');if(lines.length>600)throw new Error('Máximo 600 líneas por vez.');
@@ -480,10 +488,10 @@ window.HZUI={
       if(!mapG.has(f.gr.grado+'|'+f.gr.nombre)){errores.push(`Línea ${f.ln}: el grupo ${f.gr.grado}°${f.gr.nombre} no existe (créalo en "Grupos").`);f.mal=1;continue}
       if(!mapA.has(norm(f.asig))){if(crear)nuevasA.set(norm(f.asig),f.asig);else{errores.push(`Línea ${f.ln}: la asignatura "${f.asig}" no existe.`);f.mal=1}}
       if(!mapD.has(norm(f.doc))){if(crear)nuevosD.set(norm(f.doc),f.doc);else{errores.push(`Línea ${f.ln}: el docente "${f.doc}" no existe.`);f.mal=1}}}
-    if(nuevasA.size){const r=ok(await sb.from('hz_asignaturas').insert([...nuevasA.values()].map(n=>({colegio_id:M.colegio_id,nombre:n,area:n}))).select());r.forEach(a=>mapA.set(norm(a.nombre),a.id))}
-    if(nuevosD.size){const r=ok(await sb.from('hz_docentes').insert([...nuevosD.values()].map(n=>({colegio_id:M.colegio_id,nombre:n}))).select());r.forEach(d=>mapD.set(norm(d.nombre),d.id))}
+    if(nuevasA.size){const r=ok(await sb.from('hz_asignaturas').insert([...nuevasA.values()].map(n=>({colegio_id:CID(),nombre:n,area:n}))).select());r.forEach(a=>mapA.set(norm(a.nombre),a.id))}
+    if(nuevosD.size){const r=ok(await sb.from('hz_docentes').insert([...nuevosD.values()].map(n=>({colegio_id:CID(),nombre:n}))).select());r.forEach(d=>mapD.set(norm(d.nombre),d.id))}
     const rows=new Map();
-    filas.filter(f=>!f.mal).forEach(f=>{const g=mapG.get(f.gr.grado+'|'+f.gr.nombre),a=mapA.get(norm(f.asig)),d=mapD.get(norm(f.doc));rows.set(g+'|'+a,{colegio_id:M.colegio_id,grupo_id:g,asignatura_id:a,docente_id:d,horas:f.horas})});
+    filas.filter(f=>!f.mal).forEach(f=>{const g=mapG.get(f.gr.grado+'|'+f.gr.nombre),a=mapA.get(norm(f.asig)),d=mapD.get(norm(f.doc));rows.set(g+'|'+a,{colegio_id:CID(),grupo_id:g,asignatura_id:a,docente_id:d,horas:f.horas})});
     if(rows.size)ok(await sb.from('hz_asignaciones').upsert([...rows.values()],{onConflict:'colegio_id,grupo_id,asignatura_id'}));
     S.pegarMsg=`<div style="color:#059669">✅ ${rows.size} asignación(es) cargadas.${nuevasA.size?` Se crearon ${nuevasA.size} asignatura(s) nuevas (revisa su área en "Asignaturas").`:''}${nuevosD.size?` Se crearon ${nuevosD.size} docente(s) nuevos.`:''}</div>${errores.length?`<div style="color:#b91c1c">${errores.slice(0,12).map(E).join('<br>')}${errores.length>12?'<br>…':''}</div>`:''}`})},
   /* restricciones */
@@ -498,7 +506,7 @@ window.HZUI={
     if((tipo==='solo_dias'||tipo==='nunca_dias')&&!dias.length)throw new Error('Marca al menos un día.');
     if((tipo==='solo_franjas'||tipo==='nunca_franjas')&&!franjas.length)throw new Error('Marca al menos una hora del día.');
     if(alcance==='grado'&&!val('hz_rg'))throw new Error('Elige el grado.');if(alcance==='grupo'&&!val('hz_rp'))throw new Error('Elige el grupo.');
-    ok(await sb.from('hz_restricciones').insert({colegio_id:M.colegio_id,alcance,grado:alcance==='grado'?+val('hz_rg'):null,grupo_id:alcance==='grupo'?val('hz_rp'):null,sobre,objetivo,tipo,
+    ok(await sb.from('hz_restricciones').insert({colegio_id:CID(),alcance,grado:alcance==='grado'?+val('hz_rg'):null,grupo_id:alcance==='grupo'?val('hz_rp'):null,sobre,objetivo,tipo,
       dias:(tipo==='solo_dias'||tipo==='nunca_dias')?dias:[],franjas:(tipo==='solo_franjas'||tipo==='nunca_franjas')?franjas:[],valor:tipo==='max_por_dia'?Math.max(1,Math.round(+val('hz_rv')||1)):null,fuerza:val('hz_rf'),nota:val('hz_rn')||null}))})},
   delRestr(id){return mut(async()=>{ok(await sb.from('hz_restricciones').delete().eq('id',id))})},
   /* generar */
@@ -516,7 +524,7 @@ window.HZUI={
     if(publicar&&g.clases.length<g.total&&!confirm('Faltan '+(g.total-g.clases.length)+' hora(s) por ubicar. ¿Publicar de todos modos?'))return;
     const nombre=val('hz_vn')||('Horario '+new Date().toLocaleDateString('es-CO'));
     const cl=g.clases.map(c=>({asignacion_id:c.asignacion_id,dia:c.dia_semana,franja_id:c.franja_id,aula_id:c.aula_id}));
-    const r=await sb.rpc('hz_guardar_version',{p_colegio:M.colegio_id,p_nombre:nombre,p_puntuacion:g.puntuacion,p_resumen:{ubicadas:g.clases.length,total:g.total,conflictos:g.conflictos.slice(0,30).map(c=>c.descripcion)},p_clases:cl});
+    const r=await sb.rpc('hz_guardar_version',{p_colegio:CID(),p_nombre:nombre,p_puntuacion:g.puntuacion,p_resumen:{ubicadas:g.clases.length,total:g.total,conflictos:g.conflictos.slice(0,30).map(c=>c.descripcion)},p_clases:cl});
     if(r.error)throw r.error;
     if(publicar){const p=await sb.rpc('hz_publicar',{p_version:r.data});if(p.error)throw p.error}
     toast('✅',publicar?'Horario publicado':'Horario guardado',publicar?'Los docentes ya pueden verlo en "Mi horario".':'Quedó como borrador en "Versiones".');

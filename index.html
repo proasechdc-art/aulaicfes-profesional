@@ -56,9 +56,11 @@ button,input,select,textarea{transition:background .18s ease,border-color .18s e
 
 
 /* ===== Utilidades que faltaban en el CSS compilado ===== */
-.mb-1{margin-bottom:.25rem}.mt-3{margin-top:.75rem}.my-1{margin-top:.25rem;margin-bottom:.25rem}.my-2{margin-top:.5rem;margin-bottom:.5rem}
+.mt-4{margin-top:1rem}.mb-1{margin-bottom:.25rem}.mt-3{margin-top:.75rem}.my-1{margin-top:.25rem;margin-bottom:.25rem}.my-2{margin-top:.5rem;margin-bottom:.5rem}
 .space-y-1>:not([hidden])~:not([hidden]){margin-top:.25rem}.gap-1{gap:.25rem}.p-1{padding:.25rem}.w-10{width:2.5rem}.items-start{align-items:flex-start}
 .cursor-pointer{cursor:pointer}.font-medium{font-weight:500}.font-normal{font-weight:400}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.disabled\:opacity-40:disabled{opacity:.4}
+/* Botón «Cerrar sesión» con texto (antes solo mostraba una flecha) */
+.aula-iconbtn.aula-logout{width:auto;padding:0 14px;font-size:13px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center}
 /* ===== Identidad visual por rol (administrador, rector, coordinador, docente, estudiante) ===== */
 .aula-shell[data-role]{--rside:#171b35;--rm1:#7c72ff;--rm2:#4d43c8;--ra1:#5d52d9;--ra2:#4c42bc;--rhov:#252a49;--rav:#dedbff;--ravf:#4539b8;--ron:#4f46e5}
 .aula-shell[data-role=admin]{--rside:#10141f;--rm1:#fb7185;--rm2:#be123c;--ra1:#e11d48;--ra2:#be123c;--rhov:#1c2232;--rav:#ffe4e9;--ravf:#be123c;--ron:#be123c}
@@ -85,6 +87,7 @@ if(!AULACFG.SUPABASE_URL||!AULACFG.SUPABASE_PUBLISHABLE_KEY||AULACFG.SUPABASE_UR
 const sb=supabase.createClient(AULACFG.SUPABASE_URL||'https://REEMPLAZAR.supabase.co',AULACFG.SUPABASE_PUBLISHABLE_KEY||'REEMPLAZAR');
 const IMG=(AULACFG.SUPABASE_URL||'https://REEMPLAZAR.supabase.co')+'/storage/v1/object/public/question-images/';
 const LOGO=(AULACFG.SUPABASE_URL||'https://REEMPLAZAR.supabase.co')+'/storage/v1/object/public/school-logos/';
+const LETTERHEAD=(AULACFG.SUPABASE_URL||'https://REEMPLAZAR.supabase.co')+'/storage/v1/object/public/school-letterheads/';
 const MEDALS={first:['🥇','Primer Paso','Completar tu primer simulacro'],perfect:['🧠','Mente Brillante','100% de respuestas correctas'],clock:['⏱️','Contra el Reloj','Terminar con más de la mitad del tiempo restante'],streak:['🔥','Constante','Completar 3 simulacros'],high:['⭐','Alto Puntaje','Obtener 80 o más']};
 const isDir=()=>!!M&&(M.role==='rector'||M.role==='coordinador');
 const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -130,7 +133,7 @@ async function setMode(m){
   if(m==='docente'||m==='directivo'){
     if(!D.deps){const r=await sb.from('departamentos').select('id,nombre').order('nombre');D.deps=r.data||[]}
     await loadCat();
-    if(m==='directivo')await loadScript('colegio.js?v=2');
+    if(m==='directivo')await loadScript('colegio.js?v=3');
   }
   render();
 }
@@ -384,8 +387,8 @@ async function go(t){
   leaveChat();tab=t;
   try{
     if(['ares','arec','acoo','adoc','acat','ahist'].includes(t)){await loadScript('admin.js?v=1');await ADM.load(t)}
-    if(['dcol','ddoc','dhist','dadm'].includes(t)){await loadScript('colegio.js?v=2');await DIR.load(t)}
-    if(['dhor','mhor'].includes(t)){await loadScript('horarios.js?v=2');await HZUI.load(t)}
+    if(['dcol','ddoc','dhist','dadm','dmem'].includes(t)){await loadScript('colegio.js?v=3');await DIR.load(t)}
+    if(['dhor','mhor'].includes(t)){await loadScript('horarios.js?v=3');await HZUI.load(t)}
     if(t==='banco'){await loadScript('banco.js?v=1');await BANCO.load()}
     if(t==='sim'){
       await loadAvail();
@@ -407,6 +410,7 @@ async function go(t){
       const p=await sb.from('profiles').select('school_other,colegios(nombre,codinst,municipios(nombre,departamentos(nombre)))').eq('id',M.id).single();D.school=p.data||{};
       const j=await sb.from('print_jobs').select('*,courses(grade,name)').order('created_at',{ascending:false}).limit(30);D.jobs=j.data||[];
       const r=await sb.from('roster').select('id,course_id');D.rcount={};(r.data||[]).forEach(x=>{D.rcount[x.course_id]=(D.rcount[x.course_id]||0)+1});
+      if(M.colegio_id){const mm=await sb.from('colegio_membrete').select('*').eq('colegio_id',M.colegio_id).maybeSingle();D.mem=mm.data||null}else D.mem=null;
       LT=LH()}
     if(t==='cal'){
       const j=await sb.from('print_jobs').select('*,courses(grade,name)').order('created_at',{ascending:false}).limit(30);D.jobs=j.data||[];
@@ -676,7 +680,13 @@ async function delJob(id,t){
 }
 const fch=d=>new Date(d+'T12:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'});
 const vl=n=>'ABCDEF'[n-1]||String(n);
+function memInfo(){return`<div class="bg-white rounded-2xl p-4 shadow space-y-2"><h2 class="text-xl font-bold">🏫 1. Hoja membretada del colegio</h2><p class="text-sm text-slate-600">Tu rector subió la hoja con el membrete del colegio. <b>Se usa automáticamente</b> como fondo en tus exámenes y en las claves de respuesta, así que no necesitas subir tu propio membrete.</p><div class="flex flex-wrap items-center gap-3"><img src="${LETTERHEAD}${encodeURI(D.mem.imagen_path)}" alt="" style="height:140px;width:auto;border:1px solid #e2e8f0;border-radius:8px"><p class="text-xs text-slate-500">Las hojas de respuestas con marcas para calificar por foto no llevan este fondo, porque taparía las marcas de lectura.</p></div></div>`}
+/* Envuelve el documento con la hoja membretada repetida en cada página impresa (técnica probada con PDF real). */
+function memWrap(html,m){
+  return`<style>@page{size:A4;margin:0}@media print{#printarea{background:transparent!important}#printarea .mbg{position:fixed;left:0;top:0;width:210mm;height:297mm;z-index:-1;-webkit-print-color-adjust:exact;print-color-adjust:exact}#printarea table.flow{width:100%;border-collapse:collapse}#printarea table.flow td{padding:0;border:0}}</style><img class="mbg" src="${LETTERHEAD}${encodeURI(m.imagen_path)}" alt=""><table class="flow"><thead><tr><td style="height:${+m.margen_sup_mm}mm"></td></tr></thead><tfoot><tr><td style="height:${+m.margen_inf_mm}mm"></td></tr></tfoot><tbody><tr><td style="padding:0 ${+m.margen_der_mm}mm 0 ${+m.margen_izq_mm}mm!important">${html}</td></tr></tbody></table>`;
+}
 function lhHtml(h){
+  if(D.mem)return'';
   const L=LH();
   return`<div class="lh">${L.logo?`<img src="${LOGO}${encodeURI(L.logo)}" style="height:${h}mm;width:auto">`:''}<div class="t"><div class="l1">${E(L.l1)}</div>${L.l2?`<div>${E(L.l2)}</div>`:''}${L.l3?`<div>${E(L.l3)}</div>`:''}</div></div>`;
 }
@@ -701,9 +711,9 @@ function keyHtml(ex){
   const J=D.job.job;
   return`<div class="pg">${lhHtml(14)}<div class="ti">CLAVES DE RESPUESTA · ${E(J.title)} · ${E(J.subject)} · ${E(D.job.cname)} (solo para el docente)</div><table class="kt"><tr><th>Estudiante</th><th>Documento</th><th>Ver.</th><th>Código</th><th>Clave (número de pregunta + respuesta correcta)</th></tr>${ex.map(e=>`<tr><td>${E(e.roster?.full_name)}</td><td>${E(e.roster?.document||'')}</td><td>${vl(e.version)}</td><td>${E(e.code)}</td><td>${e.answer_key.split('').map((c,i)=>(i+1)+c).join(' ')}</td></tr>`).join('')}</table></div>`;
 }
-async function doPrint(html){
+async function doPrint(html,useMem=true){
   let a=document.getElementById('printarea');if(a)a.remove();
-  a=document.createElement('div');a.id='printarea';a.innerHTML=html;document.body.appendChild(a);
+  a=document.createElement('div');a.id='printarea';a.innerHTML=(useMem&&D.mem)?memWrap(html,D.mem):html;document.body.appendChild(a);
   await Promise.all([...a.querySelectorAll('img')].map(im=>im.complete?1:new Promise(r=>{im.onload=im.onerror=r;setTimeout(r,8000)})));
   window.onafterprint=()=>{const x=document.getElementById('printarea');if(x)x.remove()};
   window.print();
@@ -713,7 +723,7 @@ async function printKind(k){
   if(k==='sh'){try{if(typeof HOJA==='undefined')await loadScript('hoja.js?v=2')}catch(e){return err(e)}}
   const ex=D.job.exams.filter(e=>(!PJ.st||e.roster_id===PJ.st)&&(!PJ.ver||String(e.version)===PJ.ver));
   if(!ex.length)return toast('⚠️','Nada para imprimir','Revisa los filtros de estudiante y versión.');
-  doPrint(k==='ex'?ex.map(examHtml).join(''):k==='sh'?ex.map(sheetHtml).join(''):keyHtml(ex));
+  doPrint(k==='ex'?ex.map(examHtml).join(''):k==='sh'?ex.map(sheetHtml).join(''):keyHtml(ex),k!=='sh');
 }
 
 /* ---------- Banco de preguntas ---------- */
@@ -809,10 +819,10 @@ function vAuth(){
   <input id="em" type="email" class="w-full border rounded-lg p-2" placeholder="Correo">${reg?'<input id="pw" type="password" autocomplete="new-password" class="w-full border rounded-lg p-2" placeholder="Crea tu contraseña (mín. 8)"><input id="pw2" type="password" autocomplete="new-password" class="w-full border rounded-lg p-2" placeholder="Repite tu contraseña" onkeydown="if(event.key===\'Enter\')doAuth()">':'<input id="pw" type="password" class="w-full border rounded-lg p-2" placeholder="Contraseña" onkeydown="if(event.key===\'Enter\')doAuth()">'}
   <button onclick="doAuth()" class="w-full py-2 bg-indigo-600 text-white rounded-lg">${reg?'Crear cuenta de estudiante':'Entrar'}</button>
   ${reg?'':'<button onclick="forgot()" class="w-full text-xs text-slate-500 underline">¿Olvidaste tu contraseña?</button><button onclick="resend()" class="w-full text-xs text-slate-500 underline">Reenviar correo de confirmación</button>'}</div>`}
-function vPend(){const st=M.teacher_status,rej=st==='rechazado';return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><div class="text-4xl">${rej?'⛔':'🕒'}</div><h2 class="text-xl font-bold">${rej?'Tu solicitud de docente no fue aprobada':'Tu cuenta de docente está pendiente de aprobación'}</h2><p class="text-sm text-slate-600">${rej?'Comunícate con el administrador de AulaICFES si crees que es un error.':'El administrador revisará tus datos. Cuando te apruebe, vuelve a iniciar sesión y verás el panel de docente.'}</p><div class="text-left text-sm border rounded-xl p-3 space-y-1"><div><b>Nombre:</b> ${E(M.full_name)}</div><div><b>Correo:</b> ${E(M.email||'')}</div><div><b>Teléfono:</b> ${E(M.phone||'')}</div><div><b>Área:</b> ${E(M.area||'')}</div><div><b>Asignaturas:</b> ${E((M.asignaturas||[]).join(', '))}</div><div><b>Grados:</b> ${E((M.grados||[]).join('°, '))}${(M.grados||[]).length?'°':''}</div></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-slate-200">Salir</button></div>`}
+function vPend(){const st=M.teacher_status,rej=st==='rechazado';return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><div class="text-4xl">${rej?'⛔':'🕒'}</div><h2 class="text-xl font-bold">${rej?'Tu solicitud de docente no fue aprobada':'Tu cuenta de docente está pendiente de aprobación'}</h2><p class="text-sm text-slate-600">${rej?'Comunícate con el administrador de AulaICFES si crees que es un error.':'El administrador revisará tus datos. Cuando te apruebe, vuelve a iniciar sesión y verás el panel de docente.'}</p><div class="text-left text-sm border rounded-xl p-3 space-y-1"><div><b>Nombre:</b> ${E(M.full_name)}</div><div><b>Correo:</b> ${E(M.email||'')}</div><div><b>Teléfono:</b> ${E(M.phone||'')}</div><div><b>Área:</b> ${E(M.area||'')}</div><div><b>Asignaturas:</b> ${E((M.asignaturas||[]).join(', '))}</div><div><b>Grados:</b> ${E((M.grados||[]).join('°, '))}${(M.grados||[]).length?'°':''}</div></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-slate-200">Cerrar sesión</button></div>`}
 const admTabs=()=>[['ares','📈 Resumen'],['arec','🏫 Rectores'],['acoo','🧑‍💼 Coordinadores'],['adoc','👩‍🏫 Docentes'],['ahist','🧾 Historial'],['acat','🗂️ Catálogos'],['preg','📚 Preguntas'],['banco','📦 Banco (paquetes)']];
-const dirTabs=()=>M.role==='rector'?[['dcol','🏫 Mi colegio'],['ddoc','👩‍🏫 Docentes'],['dhor','🗓 Horarios'],['dhist','🧾 Historial']]:[['dcol','🏫 Mi colegio'],['ddoc','👩‍🏫 Docentes'],['dhor','🗓 Horarios']];
-function vPendDir(){const st=M.teacher_status,rej=st==='rechazado',r=M.role==='rector'?'rector':'coordinador',quien=M.role==='rector'?'El administrador':'El rector de tu colegio o el administrador';return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><div class="text-4xl">${rej?'⛔':'🕒'}</div><h2 class="text-xl font-bold">${rej?'Tu solicitud de '+r+' no fue aprobada':'Tu cuenta de '+r+' está pendiente de aprobación'}</h2><p class="text-sm text-slate-600">${rej?'Comunícate con el administrador de AulaICFES si crees que es un error.':quien+' revisará tus datos. Cuando te apruebe, vuelve a iniciar sesión.'}</p><div class="text-left text-sm border rounded-xl p-3 space-y-1"><div><b>Nombre:</b> ${E(M.full_name)}</div><div><b>Correo:</b> ${E(M.email||'')}</div><div><b>Teléfono:</b> ${E(M.phone||'')}</div></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-slate-200">Salir</button></div>`}
+const dirTabs=()=>M.role==='rector'?[['dcol','🏫 Mi colegio'],['ddoc','👩‍🏫 Docentes'],['dhor','🗓 Horarios'],['dmem','📄 Hoja membretada'],['dhist','🧾 Historial']]:[['dcol','🏫 Mi colegio'],['ddoc','👩‍🏫 Docentes'],['dhor','🗓 Horarios'],['dmem','📄 Hoja membretada']];
+function vPendDir(){const st=M.teacher_status,rej=st==='rechazado',r=M.role==='rector'?'rector':'coordinador',quien=M.role==='rector'?'El administrador':'El rector de tu colegio o el administrador';return`<div class="max-w-md mx-auto mt-10 bg-white rounded-2xl shadow p-6 space-y-3 text-center"><div class="text-4xl">${rej?'⛔':'🕒'}</div><h2 class="text-xl font-bold">${rej?'Tu solicitud de '+r+' no fue aprobada':'Tu cuenta de '+r+' está pendiente de aprobación'}</h2><p class="text-sm text-slate-600">${rej?'Comunícate con el administrador de AulaICFES si crees que es un error.':quien+' revisará tus datos. Cuando te apruebe, vuelve a iniciar sesión.'}</p><div class="text-left text-sm border rounded-xl p-3 space-y-1"><div><b>Nombre:</b> ${E(M.full_name)}</div><div><b>Correo:</b> ${E(M.email||'')}</div><div><b>Teléfono:</b> ${E(M.phone||'')}</div></div><button onclick="logout()" class="px-4 py-2 rounded-lg bg-slate-200">Cerrar sesión</button></div>`}
 function vDoc(){
   const ds=D.docs||[],badge=s=>s==='aprobado'?'✅ Aprobado':s==='rechazado'?'⛔ Rechazado':'🕒 Pendiente';
   const sch=d=>d.colegios?`${E(d.colegios.nombre)} · ${E(d.colegios.municipios?.nombre||'')} (${E(d.colegios.municipios?.departamentos?.nombre||'')})`:(d.school_other?E(d.school_other)+' (colegio escrito por el docente)':'—');
@@ -831,11 +841,11 @@ function vImp(){
   const have=c&&PJ.s?((av[c.grade]||{})[PJ.s]||0):0,max=Math.max(1,Math.min(120,have-1));
   if(PJ.n>max)PJ.n=max;
   const J=D.job,sts=J?[...new Map(J.exams.map(e=>[e.roster_id,e.roster?.full_name])).entries()]:[],vers=J?[...new Set(J.exams.map(e=>e.version))].sort():[];
-  return`<div class="space-y-4"><div class="bg-white rounded-2xl p-4 shadow space-y-3"><h2 class="text-xl font-bold">🏫 1. Membrete del colegio</h2><p class="text-sm text-slate-600">Sale en la parte de arriba de tus exámenes y hojas de respuestas. Ya lo llené con los datos de tu colegio; cámbialo si quieres y pulsa Guardar.</p>
+  return`<div class="space-y-4">${D.mem?memInfo():`<div class="bg-white rounded-2xl p-4 shadow space-y-3"><h2 class="text-xl font-bold">🏫 1. Membrete del colegio</h2><p class="text-sm text-slate-600">Sale en la parte de arriba de tus exámenes y hojas de respuestas. Ya lo llené con los datos de tu colegio; cámbialo si quieres y pulsa Guardar.</p>
   <div class="grid sm:grid-cols-3 gap-3"><label class="text-sm">Línea 1 (nombre del colegio)<input class="w-full border rounded-lg p-2 mt-1" value="${E(LT.l1)}" oninput="LT.l1=this.value"></label><label class="text-sm">Línea 2 (municipio, resolución…)<input class="w-full border rounded-lg p-2 mt-1" value="${E(LT.l2)}" oninput="LT.l2=this.value"></label><label class="text-sm">Línea 3 (área, lema…)<input class="w-full border rounded-lg p-2 mt-1" value="${E(LT.l3)}" oninput="LT.l3=this.value"></label></div>
   <div class="flex flex-wrap items-center gap-3">${LT.logo?`<img src="${LOGO}${encodeURI(LT.logo)}" style="height:60px;width:auto;border:1px solid #e2e8f0;border-radius:8px"><button onclick="delLogo()" class="px-3 py-1.5 rounded-lg bg-slate-200 text-xs">Quitar logo</button>`:'<span class="text-xs text-slate-500">Sin logo</span>'}<label class="text-sm">Subir logo (PNG o JPG, máx. 1 MB)<input type="file" accept="image/png,image/jpeg" class="block mt-1" onchange="pickLogo(this.files[0])"></label></div>
   <div class="border rounded-xl p-3 text-center text-sm"><div class="text-xs text-slate-500 mb-1">Vista previa</div>${LT.logo?`<img src="${LOGO}${encodeURI(LT.logo)}" style="height:40px;width:auto;display:inline-block;vertical-align:middle"> `:''}<b>${E(LT.l1)}</b><div class="text-xs">${E(LT.l2)}</div><div class="text-xs">${E(LT.l3)}</div></div>
-  <button onclick="saveLetter()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white">Guardar membrete</button></div>
+  <button onclick="saveLetter()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white">Guardar membrete</button></div>`}
   <div class="bg-white rounded-2xl p-4 shadow space-y-3"><h2 class="text-xl font-bold">🖨️ 2. Generar exámenes para imprimir</h2><p class="text-sm text-slate-600">Cada estudiante de la lista recibe <b>${PJ.v} exámenes distintos</b> (versiones ${[...Array(PJ.v).keys()].map(i=>vl(i+1)).join(', ')}), cada uno con su código, su nombre, su número de documento y su hoja de respuestas. Para que salga el documento, la lista del curso debe traerlo.</p>
   <div class="grid sm:grid-cols-2 gap-3"><label class="text-sm">Curso<select class="w-full border rounded-lg p-2 mt-1" onchange="PJ.c=this.value;PJ.s='';PJ.refs=[];D.cat=[];D.catKey='';render()"><option value="">Elige un curso</option>${cs.map(x=>`<option value="${x.id}" ${x.id===PJ.c?'selected':''}>${x.grade}° ${E(x.name)} (${(D.rcount||{})[x.id]||0} en lista)</option>`).join('')}</select></label>
   <label class="text-sm">Materia<select class="w-full border rounded-lg p-2 mt-1" ${c?'':'disabled'} onchange="PJ.s=this.value;PJ.refs=[];D.catKey='';render()">${subs.length?subs.map(s=>`<option ${s===PJ.s?'selected':''}>${E(s)}</option>`).join(''):'<option>(elige un curso con preguntas visibles)</option>'}</select></label>
@@ -971,7 +981,7 @@ function render(){
       ${manageTabs.length?`<div class="aula-navgroup"><div class="aula-navlabel">${adm?'Plataforma':'Gestión académica'}</div>${manageTabs.map(navButton).join('')}</div>`:''}
       <div class="aula-sidefoot"><div class="aula-avatar">${E(initials)}</div><div><div class="aula-sidefootname">${E(M.full_name||'Usuario')}</div><div class="aula-sidefootrole">${E(roleLabel)} · AulaICFES</div></div></div>
     </aside>
-    <main class="aula-main"><header class="aula-topbar"><div><div class="aula-crumb">AULAICFES <span style="padding:0 5px;color:#c0c5d2">/</span> ${E(activeLabel.toUpperCase())}</div><div class="aula-pagetitle">${E(activeLabel)}</div></div><div class="aula-topactions"><button class="aula-iconbtn" onclick="passModal()" title="Cambiar contraseña" aria-label="Cambiar contraseña">🔑</button><button class="aula-iconbtn" onclick="logout()" title="Cerrar sesión" aria-label="Cerrar sesión">↗</button><div class="aula-profile"><div class="aula-avatar">${E(initials)}</div><div><div class="aula-profile-name">${E(M.full_name||'Usuario')}</div><div class="aula-profile-sub">${E(roleLabel)}</div></div></div></div></header>
+    <main class="aula-main"><header class="aula-topbar"><div><div class="aula-crumb">AULAICFES <span style="padding:0 5px;color:#c0c5d2">/</span> ${E(activeLabel.toUpperCase())}</div><div class="aula-pagetitle">${E(activeLabel)}</div></div><div class="aula-topactions"><button class="aula-iconbtn" onclick="passModal()" title="Cambiar contraseña" aria-label="Cambiar contraseña">🔑</button><button class="aula-iconbtn aula-logout" onclick="logout()" title="Cerrar sesión" aria-label="Cerrar sesión">Cerrar sesión</button><div class="aula-profile"><div class="aula-avatar">${E(initials)}</div><div><div class="aula-profile-name">${E(M.full_name||'Usuario')}</div><div class="aula-profile-sub">${E(roleLabel)}</div></div></div></div></header>
     <nav class="aula-mobilebar">${tabs.map(navButton).join('')}</nav><div id="livebar" class="aula-live">${adm?'':vLive()}</div><section class="aula-content">${body}</section></main></div>`;
   if(tab==='clase')paintChat();
   if(!window.Chart)return;

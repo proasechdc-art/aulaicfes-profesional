@@ -47,11 +47,12 @@ async function namesOf(ids){
 }
 async function loadDet(id){
   const p=A.list.find(x=>x.id===id);
-  const [au,st]=await Promise.all([
+  const [au,st,mem]=await Promise.all([
     sb.from('auditoria').select('id,user_id,accion,entidad_id,detalle,created_at').eq('user_id',id).order('created_at',{ascending:false}).limit(100),
-    p&&p.colegio_id?sb.from('profiles').select('id,full_name,email,phone,role,teacher_status,area,asignaturas,grados,created_at').eq('colegio_id',p.colegio_id).in('role',['coordinador','prof']).eq('is_admin',false).order('full_name'):{data:[]}]);
+    p&&p.colegio_id?sb.from('profiles').select('id,full_name,email,phone,role,teacher_status,area,asignaturas,grados,created_at').eq('colegio_id',p.colegio_id).in('role',['coordinador','prof']).eq('is_admin',false).order('full_name'):{data:[]},
+    p&&p.colegio_id?sb.from('colegio_membrete').select('*').eq('colegio_id',p.colegio_id).maybeSingle():{data:null}]);
   const aud=ok(au),staff=ok(st);
-  A.det={aud,staff,names:await namesOf(aud.map(h=>h.entidad_id))};
+  A.det={aud,staff,mem:(mem&&mem.data)||null,names:await namesOf(aud.map(h=>h.entidad_id))};
 }
 async function loadHist(){
   A.hist=ok(await sb.from('auditoria').select('id,user_id,accion,entidad,entidad_id,detalle,created_at').order('created_at',{ascending:false}).limit(200));
@@ -104,13 +105,18 @@ function vPerson(){
   if(A.tdet&&window.DIR)return DIR.viewDet();
   const p=A.list.find(x=>x.id===A.sel),X=A.det;
   if(!p||!X)return card('<p class="text-sm text-slate-500">Cargando…</p>');
-  const subs=A.role==='rector'?[['act','🧾 Lo que ha hecho'],['staff','👥 Su colegio']]:[['staff','👥 Su colegio']];
+  const subs=(A.role==='rector'?[['act','🧾 Lo que ha hecho'],['staff','👥 Su colegio']]:[['staff','👥 Su colegio']]).concat([['mem','📄 Hoja membretada'],['hor','🗓 Horario del colegio']]);
   const sub=subs.some(s=>s[0]===A.sub)?A.sub:subs[0][0];
   const pers=x=>`<div class="border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2"><div><div class="font-semibold">${E(x.full_name)} <span class="text-xs text-slate-500">${RL[x.role]||''} · ${ST(x.teacher_status)}</span></div><div class="text-xs text-slate-500">${E(x.email||'')} · ${E(x.phone||'')}</div>${x.area?`<div class="text-xs text-slate-500">Área: ${E(x.area)} · ${E((x.asignaturas||[]).join(', '))}</div>`:''}</div>${x.role==='prof'?btn(`ADM.openT('${x.id}')`,'Ver lo que ha hecho','bg-indigo-600 text-white'):''}</div>`;
   let body;
   if(sub==='act'){
     const rows=X.aud.map(h=>{const d=h.detalle||{};return`<tr class="border-t"><td class="py-1" style="padding-right:12px">${ft(h.created_at)}</td><td class="py-1" style="padding-right:12px">${h.accion==='cambio_estado'?`${ST(d.de)} → ${ST(d.a)}`:E(h.accion)}</td><td class="py-1">${E(X.names[h.entidad_id]?.full_name||'—')} <span class="text-xs text-slate-500">${E(RL[d.rol]||'')}</span></td></tr>`}).join('');
     body=card(`<h3 class="font-semibold mb-2">🧾 Cuentas que aprobó o rechazó</h3>${rows?`<div class="overflow-x-auto"><table class="w-full text-sm"><tr class="text-left text-slate-500"><th class="py-1">Cuándo</th><th class="py-1">Cambio</th><th class="py-1">Cuenta</th></tr>${rows}</table></div>`:'<p class="text-sm text-slate-500">Todavía no ha aprobado ni rechazado cuentas.</p>'}`);
+  }else if(sub==='mem'){
+    const m=X.mem;
+    body=card(`<h3 class="font-semibold mb-2">📄 Hoja membretada del colegio</h3>${!p.colegio_id?'<p class="text-sm text-slate-500">Esta cuenta no tiene un colegio del catálogo.</p>':m?`<div class="flex flex-wrap gap-4 items-start"><img src="${(AULACFG.SUPABASE_URL||'')+'/storage/v1/object/public/school-letterheads/'+encodeURI(m.imagen_path)}" alt="" style="height:300px;width:auto;border:1px solid #cbd5e1;border-radius:8px"><div class="text-sm text-slate-600"><p>Subida el ${fd(m.updated_at)}. La usan automáticamente los docentes de este colegio.</p><p class="text-xs text-slate-500 mt-2">Márgenes del texto: arriba ${m.margen_sup_mm} mm · abajo ${m.margen_inf_mm} mm · izquierda ${m.margen_izq_mm} mm · derecha ${m.margen_der_mm} mm.</p></div></div>`:'<p class="text-sm text-slate-500">Este colegio todavía no ha subido su hoja membretada.</p>'}`);
+  }else if(sub==='hor'){
+    body=!p.colegio_id?card('<p class="text-sm text-slate-500">Esta cuenta no tiene un colegio del catálogo, así que no hay horario que mostrar.</p>'):(A.hz&&window.HZUI?`<div class="space-y-4">${card('<p class="text-xs text-slate-500">Estás viendo y puedes editar el horario de este colegio como administrador.</p>')}${HZUI.view('dhor')}</div>`:card('<p class="text-sm text-slate-500">Cargando el horario…</p>'));
   }else{
     const co=X.staff.filter(x=>x.role==='coordinador'),dc=X.staff.filter(x=>x.role==='prof');
     body=`<div class="space-y-4">${card(`<h3 class="font-semibold mb-2">🧑‍💼 Coordinadores (${co.length})</h3>${co.length?`<div class="space-y-2">${co.map(pers).join('')}</div>`:'<p class="text-sm text-slate-500">Sin coordinadores en este colegio.</p>'}`)}${card(`<h3 class="font-semibold mb-2">👩‍🏫 Docentes (${dc.length})</h3>${dc.length?`<div class="space-y-2">${dc.map(pers).join('')}</div>`:'<p class="text-sm text-slate-500">Sin docentes en este colegio.</p>'}`)}</div>`;
@@ -172,6 +178,7 @@ async function refreshCurrent(){
 }
 window.ADM={
   async load(t){
+    if(window.HZUI)HZUI.leave();A.hz=false;
     if(t==='ares')await loadRes();
     else if(t==='arec'||t==='acoo'||t==='adoc'){A.role={arec:'rector',acoo:'coordinador',adoc:'prof'}[t];A.sel=null;A.tdet=false;A.det=null;A.q='';A.fst='todos';await loadList(A.role)}
     else if(t==='acat')await loadCatalog();
@@ -188,13 +195,21 @@ window.ADM={
   },
   async openT(id){
     const p=A.list.find(x=>x.id===id)||(A.det&&A.det.staff.find(x=>x.id===id));if(!p)return;
-    await loadScript('colegio.js?v=2');
+    await loadScript('colegio.js?v=3');
     DIR.onBack=()=>{A.tdet=false;if(A.role==='prof')A.sel=null};
     A.tdet=true;if(A.role==='prof')A.sel=id;
     await DIR.openAny(p);
   },
-  back(){A.sel=null;A.det=null;A.tdet=false;render()},
-  sub(k){A.sub=k;render()},
+  back(){if(window.HZUI)HZUI.leave();A.hz=false;A.sel=null;A.det=null;A.tdet=false;render()},
+  async sub(k){
+    const p=A.list.find(x=>x.id===A.sel);
+    if(k==='hor'&&p&&p.colegio_id){
+      A.sub=k;A.hz=false;render();
+      try{await loadScript('horarios.js?v=3');await HZUI.openFor(p.colegio_id);A.hz=true}catch(e){err(e)}
+      render();return;
+    }
+    if(window.HZUI)HZUI.leave();A.hz=false;A.sub=k;render();
+  },
   async setSt(id,st){
     const{error}=await sb.from('profiles').update({teacher_status:st}).eq('id',id);
     if(error)return err(error);

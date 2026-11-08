@@ -173,14 +173,63 @@ async function doReg(){
 }
 
 /* ---------- Acciones ---------- */
+/* ---------- Hoja membretada del colegio (la sube el rector o el coordinador) ---------- */
+const MEMURL=p=>(AULACFG.SUPABASE_URL||'')+'/storage/v1/object/public/school-letterheads/'+encodeURI(p);
+const MM={sup:35,inf:25,izq:15,der:15},MMAX={sup:120,inf:120,izq:60,der:60};
+S.mem=null;S.memNew=null;S.memN=0;
+async function loadMem(){
+  if(!M.colegio_id){S.mem=null;return}
+  const [m,n]=await Promise.all([
+    sb.from('colegio_membrete').select('*').eq('colegio_id',M.colegio_id).maybeSingle(),
+    sb.from('profiles').select('id',{count:'exact',head:true}).eq('role','prof').eq('colegio_id',M.colegio_id).eq('teacher_status','aprobado')]);
+  if(m.error)throw m.error;
+  S.mem=m.data||null;S.memN=n.count||0;
+  if(S.memNew){URL.revokeObjectURL(S.memNew.url);S.memNew=null}
+  if(S.mem){MM.sup=S.mem.margen_sup_mm;MM.inf=S.mem.margen_inf_mm;MM.izq=S.mem.margen_izq_mm;MM.der=S.mem.margen_der_mm}
+}
+function memPrev(){
+  const src=S.memNew?S.memNew.url:(S.mem?MEMURL(S.mem.imagen_path):'');
+  if(!src)return`<div class="border rounded-xl text-center text-sm text-slate-500" style="width:280px;height:396px;margin:auto;display:grid;place-items:center">Aún no hay hoja membretada</div>`;
+  const a=`left:${MM.izq/210*100}%;right:${MM.der/210*100}%;top:${MM.sup/297*100}%;bottom:${MM.inf/297*100}%`;
+  return`<div style="position:relative;width:280px;height:396px;border:1px solid #cbd5e1;background:#fff;margin:auto"><img src="${E(src)}" alt="" style="position:absolute;left:0;top:0;width:100%;height:100%"><div id="mem-area" style="position:absolute;${a};border:2px dashed #e11d48;background:rgba(225,29,72,.06);display:grid;place-items:center;font-size:11px;color:#be123c">Aquí va el texto</div></div>`;
+}
+function vMem(){
+  if(!M.colegio_id)return card('<h2 class="text-xl font-bold">📄 Hoja membretada</h2><p class="text-sm text-red-600">Tu cuenta no tiene un colegio del catálogo. Escribe al administrador para vincularla.</p>');
+  const inp=(k,l)=>`<label class="text-sm">${l}<input id="mm-${k}" type="number" min="0" max="${MMAX[k]}" value="${MM[k]}" class="w-full border rounded-lg p-2 mt-1" oninput="DIR.memMm('${k}',this.value)"></label>`;
+  return`<div class="space-y-4">${card(`<h2 class="text-xl font-bold">📄 Hoja membretada del colegio</h2><p class="text-sm text-slate-600">Sube una hoja en blanco con el membrete de tu colegio (imagen PNG o JPG, o un PDF de una página). <b>Llega automáticamente a los ${S.memN} docente(s) aprobado(s) de tu colegio</b> y la plataforma la usa como fondo en los exámenes y claves que ellos generen, así no tienen que subir su propio membrete.</p>`)}<div class="grid sm:grid-cols-2 gap-4">${card(`<h3 class="font-semibold mb-2">1. Elige la hoja</h3><input id="mem-file" type="file" accept="image/png,image/jpeg,application/pdf" onchange="DIR.memPick(this)" class="text-sm">${S.memNew?'<p class="text-xs mt-2" style="color:#047857">Hoja nueva lista. Ajusta los márgenes y pulsa Guardar.</p>':''}<p class="text-xs text-slate-500 mt-2">Tamaño A4. Si es Carta u otro tamaño se ajustará a A4.</p><h3 class="font-semibold mt-4 mb-2">2. Zona para el texto (milímetros)</h3><p class="text-xs text-slate-500 mb-2">El recuadro rojo es donde se escribirá el contenido. Deja libres el encabezado y el pie de tu membrete.</p><div class="grid sm:grid-cols-2 gap-2">${inp('sup','Margen superior')}${inp('inf','Margen inferior')}${inp('izq','Margen izquierdo')}${inp('der','Margen derecho')}</div><div class="flex flex-wrap gap-2 mt-4"><button onclick="DIR.memSave()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm">Guardar y enviar a mis docentes</button>${S.mem?'<button onclick="DIR.memDel()" class="px-4 py-2 rounded-lg bg-slate-200 text-sm">Quitar hoja</button>':''}</div>`)}${card(`<h3 class="font-semibold mb-2 text-center">Vista previa (A4)</h3><div id="mem-prev">${memPrev()}</div>`)}</div>${card('<p class="text-xs text-slate-500">Las hojas de respuestas con marcas para calificar por foto no llevan este fondo, porque taparía las marcas que la cámara necesita leer. Los exámenes y las claves de respuesta sí lo llevan.</p>')}</div>`;
+}
+async function memFile(f){
+  try{
+    let blob=f,type=f.type;
+    if(f.type==='application/pdf'){
+      await loadScript(LIB.pdf);pdfjsLib.GlobalWorkerOptions.workerSrc=LIB.pdfw;
+      const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+      const pg=await pdf.getPage(1),v0=pg.getViewport({scale:1}),vp=pg.getViewport({scale:1240/v0.width});
+      const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+      await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      blob=await new Promise(r=>cv.toBlob(r,'image/png'));type='image/png';
+      if(blob.size>5.5*1048576){blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.9));type='image/jpeg'}
+    }else if(!/^image\/(png|jpeg)$/.test(f.type))return toast('⚠️','Formato no válido','Sube una imagen PNG o JPG, o un PDF.');
+    if(blob.size>6*1048576)return toast('⚠️','Archivo muy pesado','La hoja debe pesar menos de 6 MB.');
+    const url=URL.createObjectURL(blob);
+    const dim=await new Promise(r=>{const im=new Image();im.onload=()=>r([im.naturalWidth,im.naturalHeight]);im.onerror=()=>r([0,0]);im.src=url});
+    if(!dim[0]){URL.revokeObjectURL(url);return toast('⚠️','No pude leer la imagen','Prueba con otro archivo.')}
+    if(S.memNew)URL.revokeObjectURL(S.memNew.url);
+    S.memNew={blob,url,type};
+    if(Math.abs(dim[1]/dim[0]-297/210)>0.05)toast('ℹ️','La hoja no es A4','Se ajustará a tamaño A4 y puede verse un poco estirada.');
+    render();
+  }catch(e){err(e)}
+}
+
 window.DIR={
   async load(t){
-    if(t==='dcol')await loadCol();
+    if(t==='dmem')await loadMem();
+    else if(t==='dcol')await loadCol();
     else if(t==='ddoc')await loadDocs();
     else if(t==='dhist')await loadHist();
     else if(t==='dadm')await loadAdm();
   },
-  view(t){return({dcol:vCol,ddoc:vDocs,dhist:vHist,dadm:vAdm}[t]||(()=>''))()},
+  view(t){return({dcol:vCol,ddoc:vDocs,dhist:vHist,dadm:vAdm,dmem:vMem}[t]||(()=>''))()},
   async open(id){S.sel=id;S.sub='cur';S.det=null;render();try{await loadDet(id)}catch(e){S.sel='';err(e)}render()},
   back(){S.sel='';S.det=null;if(window.DIR.onBack)window.DIR.onBack();render()},
   /* Uso del administrador: abrir (solo lectura) a cualquier docente. */
@@ -192,6 +241,34 @@ window.DIR={
     if(error)return err(error);
     toast('✅','Guardado',st==='aprobado'?'Cuenta aprobada.':'Cuenta actualizada.');
     go(tab);
+  },
+  /* hoja membretada */
+  memPick(inp){const f=inp.files&&inp.files[0];if(!f)return;return memFile(f)},
+  memMm(k,v){const n=Math.max(0,Math.min(MMAX[k],Math.round(+v||0)));MM[k]=n;const e=document.getElementById('mem-area');if(e){e.style.left=MM.izq/210*100+'%';e.style.right=MM.der/210*100+'%';e.style.top=MM.sup/297*100+'%';e.style.bottom=MM.inf/297*100+'%'}},
+  async memSave(){
+    try{
+      if(!S.mem&&!S.memNew)return toast('⚠️','Falta la hoja','Primero elige la hoja membretada.');
+      if(MM.sup+MM.inf>230||MM.izq+MM.der>150)return toast('⚠️','Márgenes demasiado grandes','No quedaría espacio para el texto. Reduce los márgenes.');
+      const old=S.mem&&S.mem.imagen_path;let path=old;
+      if(S.memNew){
+        path=M.colegio_id+'/membrete-'+Date.now()+'.'+(S.memNew.type==='image/png'?'png':'jpg');
+        const u=await sb.storage.from('school-letterheads').upload(path,S.memNew.blob,{contentType:S.memNew.type});if(u.error)throw u.error;
+      }
+      const row={colegio_id:M.colegio_id,imagen_path:path,margen_sup_mm:MM.sup,margen_inf_mm:MM.inf,margen_izq_mm:MM.izq,margen_der_mm:MM.der,updated_at:new Date().toISOString()};
+      const r=await sb.from('colegio_membrete').upsert(row,{onConflict:'colegio_id'});
+      if(r.error){if(S.memNew)await sb.storage.from('school-letterheads').remove([path]);throw r.error}
+      if(S.memNew&&old&&old!==path)await sb.storage.from('school-letterheads').remove([old]);
+      toast('✅','Hoja guardada','Ya la tienen tus '+S.memN+' docente(s): la usarán en sus exámenes y claves.');
+      await loadMem();render();
+    }catch(e){err(e)}
+  },
+  async memDel(){
+    if(!S.mem||!confirm('¿Quitar la hoja membretada? Tus docentes dejarán de verla en sus documentos.'))return;
+    try{
+      const r=await sb.from('colegio_membrete').delete().eq('colegio_id',M.colegio_id);if(r.error)throw r.error;
+      await sb.storage.from('school-letterheads').remove([S.mem.imagen_path]);
+      toast('✅','Hoja quitada','Ya no se usa en los documentos de tus docentes.');await loadMem();render();
+    }catch(e){err(e)}
   },
   vReg,doReg
 };
